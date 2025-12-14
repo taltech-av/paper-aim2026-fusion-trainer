@@ -169,12 +169,23 @@ def save_model_dict(config, epoch, model, optimizer, epoch_uuid=None):
         config['Log']['logdir']+'checkpoints/'+filename
     )
 
+def get_model_config_key(config):
+    """Get the model configuration key (CLFT, SwinFusion, etc.)"""
+    backbone = config['CLI']['backbone']
+    if backbone == 'clft':
+        return 'CLFT'
+    elif backbone == 'swin_fusion':
+        return 'SwinFusion'
+    else:
+        return 'CLFT'  # default
+
 def adjust_learning_rate(config, optimizer, epoch):
     """Decay the learning rate based on schedule"""
     epoch_max = config['General']['epochs']
-    momentum = config['CLFT']['lr_momentum']
+    model_key = get_model_config_key(config)
+    momentum = config[model_key]['lr_momentum']
     # lr = config['General']['dpt_lr'] * (1-epoch/epoch_max)**0.9
-    lr = config['CLFT']['clft_lr'] * (momentum ** epoch)
+    lr = config[model_key]['clft_lr'] * (momentum ** epoch)
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 

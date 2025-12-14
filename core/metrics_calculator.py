@@ -16,6 +16,17 @@ class MetricsCalculator:
         self.find_overlap_func = find_overlap_func
         self.eval_classes = self._extract_eval_classes()
         self.eval_indices = self._extract_eval_indices()
+        
+        # For simple update/compute interface
+        self.reset()
+    
+    def reset(self):
+        """Reset accumulators for new evaluation."""
+        self.total_overlap = torch.zeros(self.num_eval_classes)
+        self.total_pred = torch.zeros(self.num_eval_classes)
+        self.total_label = torch.zeros(self.num_eval_classes)
+        self.total_union = torch.zeros(self.num_eval_classes)
+        self.num_samples = 0
     
     def _extract_eval_classes(self):
         """Extract evaluation class names from config (excludes background at index 0)."""
@@ -37,8 +48,56 @@ class MetricsCalculator:
             for cls in sorted(train_classes, key=lambda x: x['index'])
             if cls['index'] > 0
         ]
-        
         return eval_indices
+    
+    def update(self, outputs, targets):
+        """Update metrics with batch predictions and targets."""
+        batch_overlap, batch_pred, batch_label, batch_union = \
+            self.find_overlap_func(self.num_eval_classes + 1, outputs, targets)
+        
+        self.total_overlap += batch_overlap.cpu()
+        self.total_pred += batch_pred.cpu()
+        self.total_label += batch_label.cpu()
+        self.total_union += batch_union.cpu()
+        self.num_samples += outputs.size(0)
+    
+    def compute(self):
+        """Compute final metrics."""
+        # IoU and metrics
+        iou = self.total_overlap / (self.total_union + 1e-6)
+        precision = self.total_overlap / (self.total_pred + 1e-6)
+        recall = self.total_overlap / (self.total_label + 1e-6)
+        f1 = 2 * precision * recall / (precision + recall + 1e-6)
+        
+        return {
+            'mean_iou': torch.mean(iou).item(),
+            'mean_precision': torch.mean(precision).item(),
+            'mean_recall': torch.mean(recall).item(),
+            'mean_f1': torch.mean(f1).item(),
+            'iou': iou,
+            'precision': precision,
+            'recall': recall,
+            'f1': f1
+        }
+    
+    def compute(self):
+        """Compute final metrics."""
+        # Calculate IoU and other metrics
+        iou = self.total_overlap / (self.total_union + 1e-6)
+        precision = self.total_overlap / (self.total_pred + 1e-6)
+        recall = self.total_overlap / (self.total_label + 1e-6)
+        f1 = 2 * precision * recall / (precision + recall + 1e-6)
+        
+        return {
+            'iou': iou,
+            'precision': precision,
+            'recall': recall,
+            'f1': f1,
+            'mean_iou': torch.mean(iou).item(),
+            'mean_precision': torch.mean(precision).item(),
+            'mean_recall': torch.mean(recall).item(),
+            'mean_f1': torch.mean(f1).item()
+        }
     
     def create_accumulators(self, device):
         """Create metric accumulator tensors."""
