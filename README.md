@@ -38,7 +38,6 @@ Run tests with model-specific scripts:
 
 - **CLFT models**: `python test.py -c config/zod/clft/config_1.json`
 - **DeepLabV3+ models**: `python test_deeplabv3plus.py -c config/zod/deeplabv3/config_1.json`
-- **Swin Transformer models**: `python test_swin.py --config config/zod/swin/config_1.json`
 
 ### Visualization
 
@@ -46,7 +45,6 @@ Visualize results using:
 
 - **CLFT models**: `python visualize.py -c config/zod/clft/config_1.json -p zod_dataset/visualizations.txt`
 - **DeepLabV3+ models**: `python visualize_deeplabv3plus.py -c config/zod/deeplabv3/config_1.json -p zod_dataset/visualizations.txt`
-- **Swin Transformer models**: `python visualize_swin.py --config config/zod/swin/config_1.json -p zod_dataset/visualizations.txt`
 - **Ground truth**: `python visualize_ground_truth.py -c config/zod/clft/config_1.json -p zod_dataset/visualizations.txt`
 
 ### Benchmarking
@@ -54,7 +52,6 @@ Visualize results using:
 Run benchmarks across multiple configurations:
 
 - **CLFT models**: `python benchmark.py -c config/zod/clft/config_1.json config/zod/clft/config_2.json`
-- **Swin Transformer models**: `python benchmark_swin.py -c config/zod/swin/config_1.json config/zod/swin/config_2.json`
 
 ## Dataset
 
