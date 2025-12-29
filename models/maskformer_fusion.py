@@ -101,28 +101,31 @@ class MaskFormerFusion(nn.Module):
         # Pixel Decoder
         self.pixel_decoder = PixelDecoder(self.backbone_channels, pixel_decoder_channels)
         
-        # Transformer Decoder
-        self.transformer_decoder = TransformerDecoder(
-            d_model=transformer_d_model,
-            num_classes=num_classes,
-            num_queries=num_queries
-        )
+        # Final segmentation head
+        self.final_conv = nn.Conv2d(pixel_decoder_channels, num_classes, 1)
         
-        # Final conv for mask
-        self.mask_conv = nn.Conv2d(pixel_decoder_channels, num_classes, 1)
+    def forward(self, rgb, lidar, modal='fusion'):
+        if modal == 'rgb':
+            features = self.backbone(rgb)
+        elif modal == 'lidar':
+            features = self.backbone(lidar)
+        elif modal == 'fusion':
+            features_rgb = self.backbone(rgb)
+            features_lidar = self.backbone(lidar)
+            features = [fr + fl for fr, fl in zip(features_rgb, features_lidar)]
+        else:
+            raise ValueError(f"Invalid modal: {modal}")
         
-    def forward(self, rgb, lidar, modal='cross_fusion'):
-        # Use lidar as input to backbone
-        features = self.backbone(lidar)  # list of features
+        # Permute features from [b, h, w, c] to [b, c, h, w] if necessary
+        features = [f.permute(0, 3, 1, 2) if f.shape[1] < f.shape[-1] else f for f in features]
         
         # Pixel decoder
         pixel_features = self.pixel_decoder(features)
         
-        # Transformer decoder
-        class_logits, pred_masks = self.transformer_decoder(pixel_features)
+        # Final prediction
+        output = self.final_conv(pixel_features)
         
-        # For segmentation, take argmax or something, but for training, return logits
-        # Simplified: use conv to get final masks
-        final_masks = self.mask_conv(pixel_features)
+        # Upsample to input resolution
+        output = F.interpolate(output, size=(rgb.shape[-2], rgb.shape[-1]), mode='bilinear', align_corners=False)
         
-        return None, final_masks  # depth, segmentation
+        return None, output
