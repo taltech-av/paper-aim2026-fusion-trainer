@@ -100,28 +100,91 @@ class ResidualConvUnit(nn.Module):
         out = self.conv2(out)
         return out + x
 
+class CrossAttention(nn.Module):
+    def __init__(self, dim, num_heads=4, qkv_bias=False, attn_drop=0., proj_drop=0.):
+        super().__init__()
+        self.num_heads = num_heads
+        self.multihead_attn = nn.MultiheadAttention(embed_dim=dim, num_heads=num_heads, batch_first=True, dropout=attn_drop)
+        self.proj_drop = nn.Dropout(proj_drop)
+
+    def forward(self, x, context):
+        # x: [B, C, H, W] (Query - Camera)
+        # context: [B, C, H, W] (Key/Value - LiDAR)
+        B, C, H, W = x.shape
+        
+        # Optimization: Downsample if spatial dimensions are too large to prevent OOM
+        # Target size 64x64 results in 4096 tokens, which is manageable
+        target_h, target_w = 64, 64
+        is_downsampled = False
+        if H > target_h or W > target_w:
+            x_in = nn.functional.adaptive_avg_pool2d(x, (target_h, target_w))
+            context_in = nn.functional.adaptive_avg_pool2d(context, (target_h, target_w))
+            is_downsampled = True
+        else:
+            x_in = x
+            context_in = context
+        
+        # Flatten: [B, C, H', W'] -> [B, C, N] -> [B, N, C]
+        x_flat = x_in.flatten(2).transpose(1, 2)
+        context_flat = context_in.flatten(2).transpose(1, 2)
+        
+        # Attention
+        # query=x, key=context, value=context
+        attn_out, _ = self.multihead_attn(query=x_flat, key=context_flat, value=context_flat)
+        
+        # Dropout
+        attn_out = self.proj_drop(attn_out)
+        
+        # Reshape back: [B, N, C] -> [B, C, H', W']
+        if is_downsampled:
+            out = attn_out.transpose(1, 2).reshape(B, C, target_h, target_w)
+            # Upsample back to original resolution
+            out = nn.functional.interpolate(out, size=(H, W), mode='bilinear', align_corners=False)
+        else:
+            out = attn_out.transpose(1, 2).reshape(B, C, H, W)
+            
+        return out
+
 class Fusion(nn.Module):
-    def __init__(self, resample_dim):
+    def __init__(self, resample_dim, fusion_strategy='cross_attention'):
         super(Fusion, self).__init__()
         self.res_conv_xyz = ResidualConvUnit(resample_dim)
         self.res_conv_rgb = ResidualConvUnit(resample_dim)
         self.res_conv2 = ResidualConvUnit(resample_dim)
+        
+        self.fusion_strategy = fusion_strategy
+        
+        if self.fusion_strategy == 'cross_attention':
+            # Cross Attention for Fusion
+            self.cross_attn = CrossAttention(resample_dim)
+            self.alpha = nn.Parameter(torch.tensor(0.0)) # Learnable scaling parameter
 
     def forward(self, rgb, lidar, previous_stage=None, modal = 'rgb'):
         if previous_stage == None:
                 previous_stage = torch.zeros_like(rgb)
 
+        attn_out = torch.zeros_like(rgb)
+
         if modal == 'rgb':
             output_stage1_rgb = self.res_conv_rgb(rgb)
-            output_stage1_lidar = torch.zeros_like(output_stage1_rgb)
-        if modal == 'lidar':
+            output_stage1 = output_stage1_rgb + previous_stage
+        elif modal == 'lidar':
             output_stage1_lidar = self.res_conv_xyz(lidar)
-            output_stage1_rgb = torch.zeros_like(output_stage1_lidar)
-        if modal == 'cross_fusion': 
+            output_stage1 = output_stage1_lidar + previous_stage
+        elif modal == 'cross_fusion': 
             output_stage1_rgb = self.res_conv_rgb(rgb)
             output_stage1_lidar = self.res_conv_xyz(lidar)
-
-        output_stage1 = output_stage1_lidar + output_stage1_rgb + previous_stage
+            
+            if self.fusion_strategy == 'cross_attention':
+                # Apply Cross Attention: Query=RGB, Key/Value=LiDAR
+                attn_out = self.cross_attn(output_stage1_rgb, output_stage1_lidar)
+                # Formula: F_f = F_c + alpha * Attention(F_c, F_l) + F_l
+                output_stage1 = output_stage1_rgb + (self.alpha * attn_out) + output_stage1_lidar + previous_stage
+            elif self.fusion_strategy == 'simple_average':
+                output_stage1 = (output_stage1_rgb + output_stage1_lidar) / 2 + previous_stage
+            else:
+                raise ValueError(f"Unknown fusion strategy: {self.fusion_strategy}")
+        
         output_stage2 = self.res_conv2(output_stage1)
         
         # output_stage2 = nn.functional.interpolate(output_stage2, scale_factor=2, mode="bilinear", align_corners=True)
@@ -158,7 +221,8 @@ class SwinTransformerFusion(nn.Module):
                  nclasses=None,
                  type='segmentation',
                  model_timm='swin_base_patch4_window7_224',
-                 pretrained=True
+                 pretrained=True,
+                 fusion_strategy='cross_attention'
                  ):
         """
         Swin-based fusion model.
@@ -168,10 +232,15 @@ class SwinTransformerFusion(nn.Module):
         self.transformer_encoders = timm.create_model(model_timm, pretrained=pretrained, features_only=True)
         self.type_ = type
         self.is_spatial = True
-        if emb_dims is None:
+        
+        # Automatically detect embedding dimensions from the backbone
+        if hasattr(self.transformer_encoders, 'feature_info'):
             self.emb_dims = self.transformer_encoders.feature_info.channels()
-        else:
+        elif emb_dims is not None:
             self.emb_dims = emb_dims
+        else:
+            raise ValueError("emb_dims must be provided if backbone does not have feature_info")
+            
         self.patch_size = patch_size  # Not used for spatial, but for Reassemble
 
         # Reassembles Fusion
@@ -182,7 +251,7 @@ class SwinTransformerFusion(nn.Module):
             emb_dim_i = self.emb_dims[i]
             self.reassembles_RGB.append(SpatialReassemble(RGB_tensor_size, read, self.patch_size, s, emb_dim_i, resample_dim))
             self.reassembles_XYZ.append(SpatialReassemble(XYZ_tensor_size, read, self.patch_size, s, emb_dim_i, resample_dim))
-            self.fusions.append(Fusion(resample_dim))
+            self.fusions.append(Fusion(resample_dim, fusion_strategy=fusion_strategy))
         self.reassembles_RGB = nn.ModuleList(self.reassembles_RGB)
         self.reassembles_XYZ = nn.ModuleList(self.reassembles_XYZ)
         self.fusions = nn.ModuleList(self.fusions)

@@ -16,7 +16,7 @@
     },
     "Log": {"logdir": "logs/maskformer_rgb/"},
     "MaskFormer": {
-        "model_timm": "swin_base_patch4_window7_224",
+        "model_timm": "swinv2_base_window8_256",
         "pixel_decoder_channels": 256,
         "transformer_d_model": 256,
         "num_queries": 100,
@@ -32,7 +32,7 @@
         "val_split": "zod_dataset/validation.txt",
         "splits": {"split_train": 0.6, "split_val": 0.2, "split_test": 0.2},
         "transforms": {
-            "resize": 224,
+            "resize": 256,
             "random_rotate_range": 20,
             "p_flip": 0.5,
             "p_crop": 0.3,
@@ -42,9 +42,7 @@
             "lidar_mean": [0.049261, 0.049575, 0.092697],
             "lidar_std": [0.07696, 0.073541, 0.098311],
             "lidar_mean_waymo": [-0.17263354, 0.85321806, 24.5527253],
-            "lidar_std_waymo": [7.34546552, 1.17227659, 15.83745082],
-            "lidar_mean_iseauto": [-0.079, 0.033, 15.9],
-            "lidar_std_iseauto": [7.79, 2.156, 7.6]
+            "lidar_std_waymo": [7.34546552, 1.17227659, 15.83745082]
         },
         "dataset_classes": [
             {"name": "background", "index": 0},

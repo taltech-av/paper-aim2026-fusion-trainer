@@ -24,6 +24,7 @@ class AdvancedModelBuilder:
 
         resize = self.config['Dataset']['transforms']['resize']
         pretrained = self.config['SwinFusion'].get('pretrained', True)
+        fusion_strategy = self.config['SwinFusion'].get('fusion_strategy', 'cross_attention')
         
         model = SwinTransformerFusion(
             RGB_tensor_size=(3, resize, resize),
@@ -37,10 +38,11 @@ class AdvancedModelBuilder:
             nclasses=self.num_unique_classes,
             type=self.config['SwinFusion']['type'],
             model_timm=self.config['SwinFusion']['model_timm'],
-            pretrained=pretrained
+            pretrained=pretrained,
+            fusion_strategy=fusion_strategy
         )
         
-        print(f"Built SwinTransformerFusion model with {self.num_unique_classes} classes (pretrained: {pretrained})")
+        print(f"Built SwinTransformerFusion model with {self.num_unique_classes} classes (pretrained: {pretrained}, fusion: {fusion_strategy})")
         return model
     
     def load_checkpoint(self, model, checkpoint_path):
