@@ -7,6 +7,7 @@ import time
 import torch
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
+from torch.amp import autocast, GradScaler
 from utils.helpers import relabel_annotation, adjust_learning_rate, save_model_dict, EarlyStopping
 from integrations.training_logger import log_epoch_results
 from integrations.vision_service import send_epoch_results_from_file
@@ -29,6 +30,7 @@ class TrainingEngine:
         self.vision_training_id = vision_training_id
         self.writer = SummaryWriter()
         self.early_stopping = EarlyStopping(config)
+        self.scaler = GradScaler('cuda')
     
     def train_epoch(self, dataloader, modality, num_classes):
         """Execute one training epoch."""
@@ -49,23 +51,28 @@ class TrainingEngine:
             # Prepare inputs based on modality
             rgb_input, lidar_input = self._prepare_inputs(rgb, lidar, modality)
             
-            # Forward pass
-            _, output_seg = self.model(rgb_input, lidar_input, modality)
-            output_seg = output_seg.squeeze(1)
+            # Forward pass with mixed precision
+            with autocast('cuda'):
+                _, output_seg = self.model(rgb_input, lidar_input, modality)
+                output_seg = output_seg.squeeze(1)
+                
+                # Relabel annotation
+                anno = relabel_annotation(anno.cpu(), self.config).squeeze(0).to(self.device)
+                
+                # Compute loss
+                loss = self.criterion(output_seg, anno)
             
-            # Relabel annotation
-            anno = relabel_annotation(anno.cpu(), self.config).squeeze(0).to(self.device)
-            
-            # Update metrics
+            # Update metrics (outside autocast for precision)
             self.metrics_calc.update_accumulators(
                 accumulators, output_seg, anno, num_classes
             )
             
-            # Compute loss and backprop
-            loss = self.criterion(output_seg, anno)
             train_loss += loss.item()
-            loss.backward()
-            self.optimizer.step()
+            
+            # Backprop with scaler
+            self.scaler.scale(loss).backward()
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
             
             progress_bar.set_description(f'Train loss: {loss:.4f}')
         
@@ -94,20 +101,22 @@ class TrainingEngine:
                 # Prepare inputs based on modality
                 rgb_input, lidar_input = self._prepare_inputs(rgb, lidar, modality)
                 
-                # Forward pass
-                _, output_seg = self.model(rgb_input, lidar_input, modality)
-                output_seg = output_seg.squeeze(1)
-                
-                # Relabel annotation
-                anno = relabel_annotation(anno.cpu(), self.config).squeeze(0).to(self.device)
+                # Forward pass with mixed precision
+                with autocast('cuda'):
+                    _, output_seg = self.model(rgb_input, lidar_input, modality)
+                    output_seg = output_seg.squeeze(1)
+                    
+                    # Relabel annotation
+                    anno = relabel_annotation(anno.cpu(), self.config).squeeze(0).to(self.device)
+                    
+                    # Compute loss
+                    loss = self.criterion(output_seg, anno)
                 
                 # Update metrics
                 self.metrics_calc.update_accumulators(
                     accumulators, output_seg, anno, num_classes
                 )
                 
-                # Compute loss
-                loss = self.criterion(output_seg, anno)
                 valid_loss += loss.item()
                 
                 progress_bar.set_description(f'Valid loss: {loss:.4f}')
