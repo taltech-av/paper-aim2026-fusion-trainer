@@ -292,13 +292,18 @@ def test_model_on_weather(config, model, device, weather_condition, checkpoint_p
     # Prepare results
     results = {}
     for cls_name in eval_classes:
+        cls_idx = eval_classes.index(cls_name)
         results[cls_name] = {
-            'iou': epoch_metrics['epoch_IoU'][eval_classes.index(cls_name)].item(),
+            'iou': epoch_metrics['epoch_IoU'][cls_idx].item(),
+            'precision': epoch_metrics['precision'][cls_idx].item(),
+            'recall': epoch_metrics['recall'][cls_idx].item(),
             'ap': ap_results[cls_name]
         }
 
     print(f"{weather_condition} Results:")
     print(f"Average IoU: {epoch_metrics['epoch_IoU'].mean().item():.4f}")
+    print(f"Average Precision: {epoch_metrics['precision'].mean().item():.4f}")
+    print(f"Average Recall: {epoch_metrics['recall'].mean().item():.4f}")
     print(f"Average AP: {np.mean(list(ap_results.values())):.4f}")
     print(f"FPS: {fps:.2f}")
 
@@ -389,7 +394,9 @@ def main():
     for weather, results in all_results.items():
         eval_classes = [cls['name'] for cls in config['Dataset']['train_classes'] if cls['index'] > 0]
         mean_iou = sum(results[cls]['iou'] for cls in eval_classes) / len(eval_classes)
-        print(f"{weather}: mIoU={mean_iou:.4f}")
+        mean_precision = sum(results[cls]['precision'] for cls in eval_classes) / len(eval_classes)
+        mean_recall = sum(results[cls]['recall'] for cls in eval_classes) / len(eval_classes)
+        print(f"{weather}: mIoU={mean_iou:.4f}, mPrecision={mean_precision:.4f}, mRecall={mean_recall:.4f}")
 
     # Send to vision service
     print("\nUploading test results to vision service...")
