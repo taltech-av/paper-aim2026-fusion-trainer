@@ -129,14 +129,19 @@ def image_overlay(image, segmented_image):
 
     return overlay.astype(np.uint8)
 
-def get_all_checkpoint_paths(config):
-    """Get all checkpoint file paths, sorted by epoch number."""
+def get_all_checkpoint_paths(config, ignore_model_path=False):
+    """Get all checkpoint file paths, sorted by epoch number.
+    
+    Args:
+        config: Configuration dictionary
+        ignore_model_path: If True, ignore config['General']['model_path'] and return all checkpoints
+    """
     import glob
     import os
     
-    # If model path is specified, return just that one
+    # If model path is specified and we're not ignoring it, return just that one
     model_path = config['General'].get('model_path', '')
-    if model_path != '':
+    if model_path != '' and not ignore_model_path:
         return [model_path]
     
     # Otherwise, find all checkpoints
@@ -212,7 +217,10 @@ def adjust_learning_rate(config, optimizer, epoch):
     return lr
 
 def manage_checkpoints_by_miou(config, log_dir):
-    """Keep only the top max_checkpoints checkpoints based on validation mIoU from JSON files."""
+    """Keep only the top max_checkpoints checkpoints based on validation mIoU from JSON files.
+    
+    Only deletes .pth checkpoint files, preserving JSON files for analysis and testing.
+    """
     max_checkpoints = config['General'].get('max_epochs', 10)  # Default to 10 if not specified
     import glob
     import os
@@ -300,14 +308,7 @@ def manage_checkpoints_by_miou(config, log_dir):
     
     for checkpoint_info in to_delete:
         try:
-            # Also delete the corresponding JSON file
-            json_pattern = os.path.join(epochs_dir, f'epoch_{checkpoint_info["epoch"]}_{checkpoint_info["uuid"]}.json')
-            json_files = glob.glob(json_pattern)
-            for json_file in json_files:
-                os.remove(json_file)
-                print(f"Deleted JSON file: {os.path.basename(json_file)}")
-            
-            # Delete the checkpoint file
+            # Delete the checkpoint file only (keep JSON files)
             os.remove(checkpoint_info['path'])
             print(f"Deleted checkpoint: {os.path.basename(checkpoint_info['path'])} (mIoU: {checkpoint_info['miou']:.4f})")
         except OSError as e:

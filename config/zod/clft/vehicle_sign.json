@@ -1,5 +1,5 @@
 {
-    "Summary": "ZOD RGB Hybrid - Vehicle + Sign",
+    "Summary": "ZOD RGB CLFT-Hybrid - Vehicle + Sign",
     "tags": ["ZOD", "CLFT-Hybrid", "RGB", "Vehicle-Sign", "Specialization"],
     "CLI": {"backbone": "clft", "mode": "rgb", "path": "./zod_dataset/"},
     "General": {
@@ -14,7 +14,7 @@
         "max_epochs": 10,
         "model_path": ""
     },
-    "Log": {"logdir": "./logs/zod/vehicle_sign/"},
+    "Log": {"logdir": "./logs/zod/clft/vehicle_sign/"},
     "CLFT": {
         "emb_dim": 768,
         "hooks": [2, 5, 8, 11],

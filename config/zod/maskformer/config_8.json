@@ -14,7 +14,7 @@
         "max_epochs": 10,
         "model_path": ""
     },
-    "Log": {"logdir": "logs/maskformer/config_8"},
+    "Log": {"logdir": "logs/zod/maskformer/config_8"},
     "MaskFormer": {
         "model_timm": "swinv2_base_window8_256",
         "pixel_decoder_channels": 256,

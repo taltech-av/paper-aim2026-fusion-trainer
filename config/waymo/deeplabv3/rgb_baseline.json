@@ -14,7 +14,7 @@
         "max_epochs": 10,
         "model_path": ""
     },
-    "Log": {"logdir": "./logs/waymo/deeplabv3plus_rgb_baseline/"},
+    "Log": {"logdir": "./logs/waymo/deeplab_rgb_baseline/"},
     "DeepLabV3Plus": {
         "learning_rate": 0.0001,
         "backbone": "resnet101",

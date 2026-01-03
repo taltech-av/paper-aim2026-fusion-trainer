@@ -14,7 +14,7 @@
         "max_epochs": 10,
         "model_path": ""
     },
-    "Log": {"logdir": "./logs/zod/deeplabv3plus_fusion_learned/"},
+    "Log": {"logdir": "./logs/zod/deeplab_fusion_learned/"},
     "DeepLabV3Plus": {
         "learning_rate": 0.0001,
         "backbone": "resnet101",

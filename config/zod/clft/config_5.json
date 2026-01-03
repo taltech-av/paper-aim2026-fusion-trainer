@@ -1,5 +1,5 @@
 {
-    "Summary": "ZOD Lidar Hybrid",
+    "Summary": "ZOD Lidar CLFT-Hybrid",
     "tags": ["ZOD", "CLFT-Hybrid", "Lidar"],
     "CLI": {"backbone": "clft", "mode": "lidar", "path": "./zod_dataset/"},
     "General": {
@@ -14,7 +14,7 @@
         "max_epochs": 10,
         "model_path": ""
     },
-    "Log": {"logdir": "./logs/zod/config_5/"},
+    "Log": {"logdir": "./logs/zod/clft/config_5/"},
     "CLFT": {
         "emb_dim": 768,
         "hooks": [2, 5, 8, 11],

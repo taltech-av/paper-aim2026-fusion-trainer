@@ -1,5 +1,5 @@
 {
-    "Summary": "ZOD Fusion Hybrid",
+    "Summary": "ZOD Fusion CLFT-Hybrid",
     "tags": ["ZOD", "CLFT-Hybrid", "Fusion"],
     "CLI": {"backbone": "clft", "mode": "cross_fusion", "path": "./zod_dataset/"},
     "General": {
@@ -14,7 +14,7 @@
         "max_epochs": 10,
         "model_path": ""
     },
-    "Log": {"logdir": "./logs/zod/config_8/"},
+    "Log": {"logdir": "./logs/zod/clft/config_8/"},
     "CLFT": {
         "emb_dim": 768,
         "hooks": [2, 5, 8, 11],

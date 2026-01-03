@@ -1,5 +1,5 @@
 {
-    "Summary": "ZOD Lidar Base",
+    "Summary": "ZOD Lidar CLFT-Base",
     "tags": ["ZOD", "CLFT-Base", "Lidar"],
     "CLI": {"backbone": "clft", "mode": "lidar", "path": "./zod_dataset/"},
     "General": {
@@ -15,7 +15,7 @@
         "max_epochs": 10,
         "model_path": ""
     },
-    "Log": {"logdir": "./logs/zod/config_4/"},
+    "Log": {"logdir": "./logs/zod/clft/config_4/"},
     "CLFT": {
         "emb_dim": 768,
         "hooks": [2, 5, 8, 11],

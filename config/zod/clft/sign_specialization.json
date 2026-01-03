@@ -1,5 +1,5 @@
 {
-    "Summary": "ZOD RGB Hybrid - Sign Specialization",
+    "Summary": "ZOD RGB CLFT-Hybrid - Sign Specialization",
     "tags": ["ZOD", "CLFT-Hybrid", "RGB", "Sign-Only", "Specialization"],
     "CLI": {"backbone": "clft", "mode": "rgb", "path": "./zod_dataset/"},
     "General": {
@@ -14,7 +14,7 @@
         "max_epochs": 10,
         "model_path": ""
     },
-    "Log": {"logdir": "./logs/zod/sign_specialization/"},
+    "Log": {"logdir": "./logs/zod/clft/sign_specialization/"},
     "CLFT": {
         "emb_dim": 768,
         "hooks": [2, 5, 8, 11],

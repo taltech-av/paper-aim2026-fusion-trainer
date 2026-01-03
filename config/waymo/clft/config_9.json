@@ -1,5 +1,5 @@
 {
-    "Summary": "Waymo Fusion Large",
+    "Summary": "Waymo Fusion CLFT-Large",
     "tags": ["Waymo", "CLFT-Large", "Fusion"],
     "CLI": {"backbone": "clft", "mode": "cross_fusion", "path": "./waymo_dataset/splits_clft/"},
     "General": {
@@ -14,7 +14,7 @@
         "max_epochs": 10,
         "model_path": ""
     },
-    "Log": {"logdir": "./logs/waymo/config_9/"},
+    "Log": {"logdir": "./logs/waymo/clft/config_9/"},
     "CLFT": {
         "emb_dim": 1024,
         "hooks": [5, 11, 17, 23],

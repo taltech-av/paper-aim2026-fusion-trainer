@@ -18,7 +18,7 @@ from models.maskformer_fusion import MaskFormerFusion
 from core.metrics_calculator import MetricsCalculator
 from utils.metrics import find_overlap_exclude_bg_ignore
 from utils.helpers import relabel_annotation, get_all_checkpoint_paths, sanitize_for_json
-from utils.test_aggregator import collect_checkpoint_results, calculate_aggregated_statistics, save_and_upload_aggregated_results
+from utils.test_aggregator import test_checkpoint_and_save
 
 
 def _store_predictions_for_ap(output_seg, anno, all_predictions, all_targets, eval_classes, config):
@@ -246,7 +246,6 @@ def test_model_on_weather(config, model, device, weather_condition, checkpoint_p
 
     # Testing loop
     model.eval()
-    total_time = 0
     with torch.no_grad():
         for batch_idx, batch in enumerate(tqdm(val_loader, desc=f"Testing {weather_condition}")):
             images = batch['rgb'].to(device)
@@ -257,11 +256,8 @@ def test_model_on_weather(config, model, device, weather_condition, checkpoint_p
             targets = relabel_annotation(targets.cpu(), config).squeeze(0).to(device)
 
             # Forward pass
-            start_time = time.time()
             rgb_input, lidar_input = _prepare_inputs_for_mode(images, lidar, config['CLI']['mode'])
             _, outputs = model(rgb_input, lidar_input, config['CLI']['mode'])
-            end_time = time.time()
-            total_time += (end_time - start_time)
 
             # Get predictions
             preds = torch.argmax(outputs, dim=1)
@@ -281,14 +277,6 @@ def test_model_on_weather(config, model, device, weather_condition, checkpoint_p
         ap = _compute_ap_for_class(cls_name, all_predictions, all_targets)
         ap_results[cls_name] = ap
 
-    # Calculate inference time
-    if len(val_loader) > 0:
-        avg_time = total_time / len(val_loader)
-        fps = 1.0 / avg_time if avg_time > 0 else 0.0
-    else:
-        avg_time = 0.0
-        fps = 0.0
-
     # Prepare results
     results = {}
     for cls_name in eval_classes:
@@ -307,7 +295,6 @@ def test_model_on_weather(config, model, device, weather_condition, checkpoint_p
     print(f"Average Recall: {epoch_metrics['recall'].mean().item():.4f}")
     print(f"Average F1: {epoch_metrics['f1'].mean().item():.4f}")
     print(f"Average AP: {np.mean(list(ap_results.values())):.4f}")
-    print(f"FPS: {fps:.2f}")
 
     return results
 
@@ -355,6 +342,8 @@ def test_single_checkpoint(checkpoint_path, config, device, weather_conditions, 
 
 
 def main():
+    start_time = time.time()
+    
     parser = argparse.ArgumentParser(description="Test MaskFormer on ZOD weather conditions")
     parser.add_argument('-c', '--config', type=str, required=True, help='Path to config JSON file')
     parser.add_argument('--checkpoint', type=str, default=None, help='Path to model checkpoint')
@@ -375,7 +364,7 @@ def main():
     if args.checkpoint:
         checkpoint_paths = [args.checkpoint]
     else:
-        checkpoint_paths = get_all_checkpoint_paths(config)
+        checkpoint_paths = get_all_checkpoint_paths(config, ignore_model_path=True)
 
     if not checkpoint_paths:
         print("No checkpoints found. Please train the model first.")
@@ -387,23 +376,25 @@ def main():
     weather_conditions = ['day_fair', 'day_rain', 'night_fair', 'night_rain', 'snow']
     eval_classes = [cls['name'] for cls in config['Dataset']['train_classes'] if cls['index'] > 0]
 
-    # Test all checkpoints and collect results
-    all_checkpoint_results = collect_checkpoint_results(
-        checkpoint_paths, test_single_checkpoint, config, device, weather_conditions, num_classes, num_eval_classes
-    )
+    # Test all checkpoints one by one
+    all_checkpoint_results = []
+    for checkpoint_path in checkpoint_paths:
+        checkpoint_data = test_checkpoint_and_save(
+            checkpoint_path, test_single_checkpoint, config, device, weather_conditions, num_classes, num_eval_classes
+        )
+        all_checkpoint_results.append(checkpoint_data)
 
-    # Calculate aggregated statistics
-    aggregated_results = calculate_aggregated_statistics(
-        all_checkpoint_results, weather_conditions, eval_classes
-    )
+    # Calculate total execution time
+    end_time = time.time()
+    total_execution_time = end_time - start_time
 
-    # Save and upload aggregated results
-    save_and_upload_aggregated_results(
-        config, checkpoint_paths, aggregated_results, all_checkpoint_results
-    )
-
+    # Print total execution time
+    hours, remainder = divmod(total_execution_time, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    
     print(f"\n{'='*50}")
-    print(f"Completed testing all {len(checkpoint_paths)} checkpoints and calculated aggregated statistics")
+    print(f"Total test execution time: {int(hours):02d}:{int(minutes):02d}:{seconds:05.2f} ({total_execution_time:.2f} seconds)")
+    print(f"Completed testing all {len(checkpoint_paths)} checkpoints")
 
 
 if __name__ == "__main__":

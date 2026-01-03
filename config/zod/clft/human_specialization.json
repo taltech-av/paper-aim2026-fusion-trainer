@@ -1,5 +1,5 @@
 {
-    "Summary": "ZOD RGB Hybrid - Human Specialization",
+    "Summary": "ZOD RGB CLFT-Hybrid - Human Specialization",
     "tags": ["ZOD", "CLFT-Hybrid", "RGB", "Human-Only", "Specialization"],
     "CLI": {"backbone": "clft", "mode": "rgb", "path": "./zod_dataset/"},
     "General": {
@@ -14,7 +14,7 @@
         "max_epochs": 10,
         "model_path": ""
     },
-    "Log": {"logdir": "./logs/zod/human_specialization/"},
+    "Log": {"logdir": "./logs/zod/clft/human_specialization/"},
     "CLFT": {
         "emb_dim": 768,
         "hooks": [2, 5, 8, 11],

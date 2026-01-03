@@ -1,5 +1,5 @@
 {
-    "Summary": "ZOD RGB Hybrid - Human + Vehicle",
+    "Summary": "ZOD RGB CLFT-Hybrid - Human + Vehicle",
     "tags": ["ZOD", "CLFT-Hybrid", "RGB", "Human-Vehicle", "Specialization"],
     "CLI": {"backbone": "clft", "mode": "rgb", "path": "./zod_dataset/"},
     "General": {
@@ -14,7 +14,7 @@
         "max_epochs": 10,
         "model_path": ""
     },
-    "Log": {"logdir": "./logs/zod/human_vehicle/"},
+    "Log": {"logdir": "./logs/zod/clft/human_vehicle/"},
     "CLFT": {
         "emb_dim": 768,
         "hooks": [2, 5, 8, 11],

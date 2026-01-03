@@ -19,7 +19,7 @@ from models.deeplabv3plus import build_deeplabv3plus
 from core.metrics_calculator import MetricsCalculator
 from utils.metrics import find_overlap_exclude_bg_ignore
 from utils.helpers import get_all_checkpoint_paths, sanitize_for_json
-from utils.test_aggregator import collect_checkpoint_results, calculate_aggregated_statistics, save_and_upload_aggregated_results
+from utils.test_aggregator import test_checkpoint_and_save
 
 
 def calculate_num_classes(config):
@@ -170,8 +170,6 @@ def test_model(model, dataloader, metrics_calc, device, config, num_classes, mod
     accumulators = metrics_calc.create_accumulators(device)
     total_loss = 0.0
     num_batches = 0
-    total_inference_time = 0.0
-    total_samples = 0
     
     # Initialize storage for proper AP calculation (pixel-wise predictions and targets)
     eval_classes = [cls['name'] for cls in config['Dataset']['train_classes'] if cls['index'] > 0]
@@ -186,13 +184,6 @@ def test_model(model, dataloader, metrics_calc, device, config, num_classes, mod
             # Relabel annotations
             anno = relabel_classes(anno, config)
             
-            # Synchronize for accurate timing
-            if torch.cuda.is_available():
-                torch.cuda.synchronize()
-            
-            # Time the forward pass
-            inference_start = time.time()
-            
             if is_fusion:
                 lidar = batch['lidar'].to(device)
                 pred, _, _ = model(rgb, lidar)
@@ -202,13 +193,6 @@ def test_model(model, dataloader, metrics_calc, device, config, num_classes, mod
                 else:  # lidar
                     lidar = batch['lidar'].to(device)
                     pred = model(lidar)
-            
-            # Synchronize and record time
-            if torch.cuda.is_available():
-                torch.cuda.synchronize()
-            inference_time = time.time() - inference_start
-            total_inference_time += inference_time
-            total_samples += rgb.size(0)
             
             # Update accumulators
             batch_overlap, batch_pred, batch_label, batch_union = metrics_calc.update_accumulators(
@@ -230,16 +214,6 @@ def test_model(model, dataloader, metrics_calc, device, config, num_classes, mod
         ap = _compute_ap_for_class(cls_name, all_predictions, all_targets)
         metrics['ap'][i] = ap
     
-    # Add inference time statistics
-    metrics['inference_time'] = {
-        'total_seconds': round(total_inference_time, 2),
-        'samples': total_samples,
-        'batches': num_batches,
-        'avg_per_sample_ms': round((total_inference_time / total_samples) * 1000, 2) if total_samples > 0 else 0,
-        'avg_per_batch_ms': round((total_inference_time / num_batches) * 1000, 2) if num_batches > 0 else 0,
-        'throughput_fps': round(total_samples / total_inference_time, 2) if total_inference_time > 0 else 0
-    }
-    
     return metrics
 
 
@@ -253,13 +227,6 @@ def print_metrics(metrics, dataset_name, class_names):
     print(f"Mean Recall: {torch.mean(metrics['recall']).item():.4f}")
     print(f"Mean F1: {torch.mean(metrics['f1']).item():.4f}")
     print(f"Mean AP: {torch.mean(metrics['ap']).item():.4f}")
-    
-    if 'inference_time' in metrics:
-        inf_time = metrics['inference_time']
-        print(f"\nInference Performance:")
-        print(f"  Avg time per sample: {inf_time['avg_per_sample_ms']:.2f} ms")
-        print(f"  Avg time per batch: {inf_time['avg_per_batch_ms']:.2f} ms")
-        print(f"  Throughput: {inf_time['throughput_fps']:.2f} FPS")
     
     print("\nPer-class Metrics:")
     for i, class_name in enumerate(class_names):
@@ -313,10 +280,6 @@ def convert_metrics_to_serializable(metrics, config, num_eval_classes):
             'f1': float(metrics['f1'][i].item()),
             'ap': float(metrics['ap'][i].item())
         }
-    
-    # Add inference time if present
-    if 'inference_time' in metrics:
-        serializable['inference_time'] = metrics['inference_time']
     
     return serializable
 
@@ -445,6 +408,8 @@ def test_single_checkpoint(checkpoint_path, config, device, weather_conditions, 
 
 
 def main():
+    start_time = time.time()
+    
     parser = argparse.ArgumentParser(description='Test DeepLabV3+ Model')
     parser.add_argument('-c', '--config', type=str, required=True,
                        help='Path to config file')
@@ -475,7 +440,7 @@ def main():
     if args.checkpoint:
         checkpoint_paths = [args.checkpoint]
     else:
-        checkpoint_paths = get_all_checkpoint_paths(config)
+        checkpoint_paths = get_all_checkpoint_paths(config, ignore_model_path=True)
         if not checkpoint_paths:
             print("Error: No checkpoints found. Please train the model first.")
             return
@@ -487,23 +452,26 @@ def main():
     eval_classes = [cls['name'] for cls in config['Dataset']['train_classes'] if cls['index'] > 0]
     
     # Test all checkpoints and collect results
-    all_checkpoint_results = collect_checkpoint_results(
-        checkpoint_paths, test_single_checkpoint, config, device, weather_conditions, 
-        num_classes, num_eval_classes, modality, fusion_type, is_fusion
-    )
+    # Test all checkpoints one by one
+    all_checkpoint_results = []
+    for checkpoint_path in checkpoint_paths:
+        checkpoint_data = test_checkpoint_and_save(
+            checkpoint_path, test_single_checkpoint, config, device, weather_conditions, 
+            num_classes, num_eval_classes, modality, fusion_type, is_fusion
+        )
+        all_checkpoint_results.append(checkpoint_data)
     
-    # Calculate aggregated statistics
-    aggregated_results = calculate_aggregated_statistics(
-        all_checkpoint_results, weather_conditions, eval_classes
-    )
+    # Calculate total execution time
+    end_time = time.time()
+    total_execution_time = end_time - start_time
     
-    # Save and upload aggregated results
-    save_and_upload_aggregated_results(
-        config, checkpoint_paths, aggregated_results, all_checkpoint_results
-    )
+    # Print total execution time
+    hours, remainder = divmod(total_execution_time, 3600)
+    minutes, seconds = divmod(remainder, 60)
     
     print(f"\n{'='*50}")
-    print(f"Completed testing all {len(checkpoint_paths)} checkpoints and calculated aggregated statistics")
+    print(f"Total test execution time: {int(hours):02d}:{int(minutes):02d}:{seconds:05.2f} ({total_execution_time:.2f} seconds)")
+    print(f"Completed testing all {len(checkpoint_paths)} checkpoints")
 
 
 if __name__ == '__main__':

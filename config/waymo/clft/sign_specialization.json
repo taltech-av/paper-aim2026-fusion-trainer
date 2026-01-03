@@ -1,5 +1,5 @@
 {
-    "Summary": "Waymo RGB Hybrid - Sign Specialization",
+    "Summary": "Waymo RGB CLFT-Hybrid - Sign Specialization",
     "tags": ["Waymo", "CLFT-Hybrid", "RGB", "Sign-Only", "Specialization"],
     "CLI": {"backbone": "clft", "mode": "rgb", "path": "./waymo_dataset/splits_clft/"},
     "General": {
@@ -14,7 +14,7 @@
         "max_epochs": 10,
         "model_path": ""
     },
-    "Log": {"logdir": "./logs/waymo/sign_specialization/"},
+    "Log": {"logdir": "./logs/waymo/clft/sign_specialization/"},
     "CLFT": {
         "emb_dim": 768,
         "hooks": [2, 5, 8, 11],

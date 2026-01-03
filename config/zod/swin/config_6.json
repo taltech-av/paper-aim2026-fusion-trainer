@@ -14,7 +14,7 @@
         "max_epochs": 10,
         "model_path": ""
     },
-    "Log": {"logdir": "logs/swin/config_6"},
+    "Log": {"logdir": "logs/zod/swin/config_6"},
     "SwinFusion": {
         "emb_dims": [192, 384, 768, 1536],
         "hooks": [0, 1, 2, 3],

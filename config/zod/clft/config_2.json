@@ -1,5 +1,5 @@
 {
-    "Summary": "ZOD RGB Hybrid",
+    "Summary": "ZOD RGB CLFT-Hybrid",
     "tags": ["ZOD", "CLFT-Hybrid", "RGB"],
     "CLI": {"backbone": "clft", "mode": "rgb", "path": "./zod_dataset/"},
     "General": {
@@ -14,7 +14,7 @@
         "max_epochs": 10,
         "model_path": ""
     },
-    "Log": {"logdir": "./logs/zod/config_2/"},
+    "Log": {"logdir": "./logs/zod/clft/config_2/"},
     "CLFT": {
         "emb_dim": 768,
         "hooks": [2, 5, 8, 11],

@@ -1,5 +1,5 @@
 {
-    "Summary": "Waymo Lidar Large",
+    "Summary": "Waymo Lidar CLFT-Large",
     "tags": ["Waymo", "CLFT-Large", "Lidar"],
     "CLI": {"backbone": "clft", "mode": "lidar", "path": "./waymo_dataset/splits_clft/"},
     "General": {
@@ -14,7 +14,7 @@
         "max_epochs": 10,
         "model_path": ""
     },
-    "Log": {"logdir": "./logs/waymo/config_6/"},
+    "Log": {"logdir": "./logs/waymo/clft/config_6/"},
     "CLFT": {
         "emb_dim": 1024,
         "hooks": [5, 11, 17, 23],

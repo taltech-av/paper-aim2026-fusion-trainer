@@ -1,5 +1,5 @@
 {
-    "Summary": "Waymo RGB Hybrid - Human + Sign",
+    "Summary": "Waymo RGB CLFT-Hybrid - Human + Sign",
     "tags": ["Waymo", "CLFT-Hybrid", "RGB", "Human-Sign", "Specialization"],
     "CLI": {"backbone": "clft", "mode": "rgb", "path": "./waymo_dataset/splits_clft/"},
     "General": {
@@ -14,7 +14,7 @@
         "max_epochs": 10,
         "model_path": ""
     },
-    "Log": {"logdir": "./logs/waymo/human_sign/"},
+    "Log": {"logdir": "./logs/waymo/clft/human_sign/"},
     "CLFT": {
         "emb_dim": 768,
         "hooks": [2, 5, 8, 11],

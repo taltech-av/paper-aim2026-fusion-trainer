@@ -141,32 +141,14 @@ def run_test_suite(tester, config, test_data_files, test_data_path, num_classes)
         # Get modality
         modality = config['CLI']['mode']
         
-        # Track inference time
-        start_time = time.time()
-        
         # Run test
         results, inference_stats = tester.test(test_dataloader, modality, num_classes)
-        
-        # Calculate total time
-        total_time = time.time() - start_time
-        
-        # Add timing information to results
-        results['inference_time'] = {
-            'total_seconds': round(total_time, 2),
-            'samples': inference_stats['total_samples'],
-            'batches': inference_stats['total_batches'],
-            'avg_per_sample_ms': round((inference_stats['total_inference_time'] / inference_stats['total_samples']) * 1000, 2) if inference_stats['total_samples'] > 0 else 0.0,
-            'avg_per_batch_ms': round((inference_stats['total_inference_time'] / inference_stats['total_batches']) * 1000, 2) if inference_stats['total_batches'] > 0 else 0.0,
-            'throughput_fps': round(inference_stats['total_samples'] / inference_stats['total_inference_time'], 2) if inference_stats['total_inference_time'] > 0 else 0.0
-        }
         
         # Extract weather condition from filename
         weather_condition = file.replace('test_', '').replace('.txt', '')
         all_results[weather_condition] = results
         
-        print(f'Testing completed for {weather_condition}')
-        print(f'Inference time: {results["inference_time"]["avg_per_sample_ms"]}ms/sample, '
-              f'{results["inference_time"]["throughput_fps"]} FPS\n')
+        print(f'Testing completed for {weather_condition}\n')
     
     return all_results
 
@@ -176,6 +158,8 @@ def main():
     parser = argparse.ArgumentParser(description='CLFT Testing (Refactored)')
     parser.add_argument('-c', '--config', type=str, required=False,
                        default='config.json', help='Path to config file')
+    parser.add_argument('--checkpoint', type=str, default=None,
+                       help='Path to specific model checkpoint (optional, tests all if not specified)')
     args = parser.parse_args()
     
     # Load configuration
@@ -190,8 +174,12 @@ def main():
                          if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
     
-    # Get all checkpoint paths
-    checkpoint_paths = get_all_checkpoint_paths(config)
+    # Get checkpoint paths
+    if args.checkpoint:
+        checkpoint_paths = [args.checkpoint]
+    else:
+        checkpoint_paths = get_all_checkpoint_paths(config, ignore_model_path=True)
+    
     if not checkpoint_paths:
         print("No model checkpoints found. Please train the model first.")
         exit(1)

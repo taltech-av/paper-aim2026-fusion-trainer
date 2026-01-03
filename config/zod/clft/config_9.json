@@ -1,5 +1,5 @@
 {
-    "Summary": "ZOD Fusion Large",
+    "Summary": "ZOD Fusion CLFT-Large",
     "tags": ["ZOD", "CLFT-Large", "Fusion"],
     "CLI": {"backbone": "clft", "mode": "cross_fusion", "path": "./zod_dataset/"},
     "General": {
@@ -14,7 +14,7 @@
         "max_epochs": 10,
         "model_path": ""
     },
-    "Log": {"logdir": "./logs/zod/config_9/"},
+    "Log": {"logdir": "./logs/zod/clft/config_9/"},
     "CLFT": {
         "emb_dim": 1024,
         "hooks": [5, 11, 17, 23],

@@ -1,5 +1,5 @@
 #!/bin/bash 
-#SBATCH --job-name=w-base                ### job name
+#SBATCH --job-name=v1w-base                ### job name
 #SBATCH -n 1
 #SBATCH -p gpu                  ### use gpu
 #SBATCH --gres=gpu:A100:1               ### specifying the GPU type
