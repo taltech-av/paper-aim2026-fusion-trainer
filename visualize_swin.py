@@ -143,6 +143,10 @@ def process_images(model, data_loader, visualizer, image_paths, dataroot,
             print(f"Visualization failed for {rgb_name}: {e}")
             failed_count += 1
 
+    # Clear GPU cache
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
     print(f"\nProcessing complete!")
     print(f"Successfully processed: {len(image_paths) - failed_count}/{len(image_paths)}")
     if upload:

@@ -726,7 +726,7 @@ def find_config_files(base_paths):
 
 def main():
     parser = argparse.ArgumentParser(description='Swin Model Benchmarking')
-    parser.add_argument('-c', '--configs', nargs='+', required=True,
+    parser.add_argument('-c', '--config', nargs='+', required=True,
                        help='Paths to config files or directories containing configs')
     parser.add_argument('-d', '--device', default='auto',
                        help='Device to use (auto, cpu, cuda, cuda:0, etc.)')
@@ -737,8 +737,14 @@ def main():
 
     args = parser.parse_args()
 
+    print("Benchmark script started, parsing arguments...")
+
+    # Clear GPU cache at start
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
     # Find all config files
-    config_files = find_config_files(args.configs)
+    config_files = find_config_files(args.config)
     print(f"Found {len(config_files)} config files")
 
     if not config_files:

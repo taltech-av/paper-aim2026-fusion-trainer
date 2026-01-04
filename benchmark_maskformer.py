@@ -512,7 +512,7 @@ class MaskFormerBenchmarker:
 
 def main():
     parser = argparse.ArgumentParser(description='Benchmark MaskFormer models')
-    parser.add_argument('-c', '--configs', nargs='+', required=True,
+    parser.add_argument('-c', '--config', nargs='+', required=True,
                         help='Paths to config JSON files')
     parser.add_argument('--device', type=str, default='auto',
                         help='Device to use (auto, cpu, cuda, cuda:0, etc.)')

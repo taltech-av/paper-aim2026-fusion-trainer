@@ -726,7 +726,7 @@ def find_config_files(base_paths):
 
 def main():
     parser = argparse.ArgumentParser(description='CLFT Model Benchmarking')
-    parser.add_argument('-c', '--configs', nargs='+', required=True,
+    parser.add_argument('-c', '--config', nargs='+', required=True,
                        help='Paths to config files or directories containing configs')
     parser.add_argument('-d', '--device', default='auto',
                        help='Device to use (auto, cpu, cuda, cuda:0, etc.)')

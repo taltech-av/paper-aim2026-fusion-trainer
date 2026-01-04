@@ -4,6 +4,10 @@ import uuid
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+import urllib3
+
+# Disable SSL warnings for HTTPS requests
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Load environment variables from .env file
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '.env'))
