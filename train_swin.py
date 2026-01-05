@@ -261,7 +261,7 @@ def main():
         shuffle=True,
         pin_memory=True,
         drop_last=True,
-        num_workers=4,
+        num_workers=8,
         persistent_workers=True
     )
     
@@ -271,7 +271,7 @@ def main():
         shuffle=True,
         pin_memory=True,
         drop_last=True,
-        num_workers=2,
+        num_workers=8,
         persistent_workers=True
     )
     
