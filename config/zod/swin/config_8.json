@@ -19,7 +19,7 @@
         "emb_dims": [128, 256, 512, 1024],
         "hooks": [0, 1, 2, 3],
         "model_timm": "swinv2_base_window8_256",
-        "fusion_strategy": "cross_attention",
+        "fusion_strategy": "simple_average",
         "clft_lr": 8e-05,
         "patch_size": 4,
         "reassembles": [4, 8, 16, 32],
