@@ -58,8 +58,9 @@ class CLFTBenchmarker:
         self.epoch_uuid = None
         self.epoch = None
         
-        if epoch_file:
-            self._extract_epoch_info(epoch_file)
+        self._extract_epoch_info(epoch_file)
+
+    def _extract_epoch_info(self, epoch_file):
         """Extract epoch information from epoch file path and contents."""
         import re
         
@@ -671,6 +672,9 @@ class CLFTBenchmarker:
 
         output_data = {
             'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
+            'epoch': self.epoch,
+            'epoch_uuid': self.epoch_uuid,
+            'training_uuid': self.training_uuid,
             'system_info': system_info,
             'results': self.results
         }
@@ -683,12 +687,18 @@ class CLFTBenchmarker:
         # Send results to vision service
         try:
             from integrations.vision_service import send_benchmark_results_from_file
-            success = send_benchmark_results_from_file(
-                output_path, 
-                training_uuid=self.training_uuid,
-                epoch_uuid=self.epoch_uuid,
-                epoch=self.epoch
-            )
+            
+            # Only send training association if we have a valid training UUID
+            if self.training_uuid:
+                success = send_benchmark_results_from_file(
+                    output_path, 
+                    training_uuid=self.training_uuid,
+                    epoch_uuid=self.epoch_uuid,
+                    epoch=self.epoch
+                )
+            else:
+                success = send_benchmark_results_from_file(output_path)
+                
             if success:
                 print("Benchmark results successfully sent to vision service")
             else:
