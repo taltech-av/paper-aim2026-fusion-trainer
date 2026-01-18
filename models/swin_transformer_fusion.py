@@ -243,13 +243,12 @@ class Fusion(nn.Module):
             elif self.fusion_strategy == 'residual_average':
                 output_stage1_rgb = self.res_conv_rgb(rgb)
                 output_stage1_lidar = self.res_conv_xyz(lidar)
-                avg = (output_stage1_rgb + output_stage1_lidar) / 2
-                output_stage1 = avg + previous_stage
-            elif self.fusion_strategy == 'gated_average_no_prev':
+                simple_avg = (output_stage1_rgb + output_stage1_lidar) / 2
+                output_stage1 = simple_avg + previous_stage
+            elif self.fusion_strategy == 'residual_average_no_prev':
                 output_stage1_rgb = self.res_conv_rgb(rgb)
                 output_stage1_lidar = self.res_conv_xyz(lidar)
-                simple_avg = (output_stage1_rgb + output_stage1_lidar) / 2
-                output_stage1 = output_stage1_rgb + output_stage1_lidar + self.alpha * simple_avg  # No previous_stage
+                output_stage1 = (output_stage1_rgb + output_stage1_lidar) / 2
             elif self.fusion_strategy == 'weighted_average':
                 output_stage1_rgb = self.res_conv_rgb(rgb)
                 output_stage1_lidar = self.res_conv_xyz(lidar)
