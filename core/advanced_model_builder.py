@@ -45,3 +45,7 @@ class AdvancedModelBuilder:
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
         model.load_state_dict(checkpoint['model_state_dict'], strict=False)
         model.to(self.device)
+        
+        epoch = checkpoint.get('epoch', 0)
+        print(f"Loaded checkpoint from epoch {epoch}: {checkpoint_path}")
+        return model, epoch
