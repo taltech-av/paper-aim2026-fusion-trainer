@@ -4,7 +4,7 @@
     "CLI": {"backbone": "clft", "mode": "cross_fusion", "path": "./zod_dataset/"},
     "General": {
         "device": "cuda:0",
-        "epochs": 50,
+        "epochs": 100,
         "batch_size": 12,
         "path_predicted_images": "output",
         "seed": 0,

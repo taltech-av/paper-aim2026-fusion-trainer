@@ -150,6 +150,21 @@ def run_test_suite(tester, config, test_data_files, test_data_path, num_classes)
         
         print(f'Testing completed for {weather_condition}\n')
     
+    # Compute overall metrics as averages across conditions
+    weather_conditions = list(all_results.keys())
+    if weather_conditions:
+        overall_miou = np.mean([all_results[w]['overall']['mIoU_foreground'] for w in weather_conditions])
+        overall_mean_acc = np.mean([all_results[w]['overall']['mean_accuracy'] for w in weather_conditions])
+        overall_fw_iou = np.mean([all_results[w]['overall']['fw_iou'] for w in weather_conditions])
+        overall_pixel_acc = np.mean([all_results[w]['overall']['pixel_accuracy'] for w in weather_conditions])
+        
+        all_results['overall'] = {
+            'mIoU_foreground': overall_miou,
+            'mean_accuracy': overall_mean_acc,
+            'fw_iou': overall_fw_iou,
+            'pixel_accuracy': overall_pixel_acc
+        }
+    
     return all_results
 
 

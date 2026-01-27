@@ -101,13 +101,16 @@ class MetricsCalculator:
     
     def create_accumulators(self, device):
         """Create metric accumulator tensors."""
+        num_classes = len(self.config['Dataset']['train_classes'])
         return {
             'overlap': torch.zeros(self.num_eval_classes).to(device),
             'pred': torch.zeros(self.num_eval_classes).to(device),
             'label': torch.zeros(self.num_eval_classes).to(device),
             'union': torch.zeros(self.num_eval_classes).to(device),
             'pixel_correct': torch.tensor(0.0).to(device),
-            'pixel_total': torch.tensor(0.0).to(device)
+            'pixel_total': torch.tensor(0.0).to(device),
+            'class_pixels': torch.zeros(self.num_eval_classes).to(device),  # For FWIoU
+            'confusion_matrix': torch.zeros(num_classes, num_classes, dtype=torch.long, device=device)  # Include background
         }
     
     def update_accumulators(self, accumulators, output_seg, anno, num_classes):
@@ -127,6 +130,14 @@ class MetricsCalculator:
         
         accumulators['pixel_correct'] += correct_pixels
         accumulators['pixel_total'] += total_pixels
+        
+        # Update class pixel counts for FWIoU
+        for i in range(self.num_eval_classes):
+            accumulators['class_pixels'][i] += (anno == (i + 1)).sum().item()  # eval classes start from 1
+        
+        # Update confusion matrix (vectorized)
+        indices = num_classes * anno.flatten() + pred_indices.flatten()
+        accumulators['confusion_matrix'] += torch.bincount(indices, minlength=num_classes**2).reshape(num_classes, num_classes)
         
         return batch_overlap, batch_pred, batch_label, batch_union
     

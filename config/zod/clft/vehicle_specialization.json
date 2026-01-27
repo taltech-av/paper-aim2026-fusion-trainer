@@ -4,14 +4,14 @@
     "CLI": {"backbone": "clft", "mode": "rgb", "path": "./zod_dataset/"},
     "General": {
         "device": "cuda:0",
-        "epochs": 50,
+        "epochs": 400,
         "batch_size": 8,
         "path_predicted_images": "output",
         "seed": 0,
         "resume_training": false,
         "reset_lr": false,
         "early_stop_patience": 200,
-        "max_epochs": 10,
+        "max_epochs": 2,
         "model_path": ""
     },
     "Log": {"logdir": "./logs/zod/clft/vehicle_specialization/"},

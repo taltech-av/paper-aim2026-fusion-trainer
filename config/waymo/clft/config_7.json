@@ -4,14 +4,14 @@
     "CLI": {"backbone": "clft", "mode": "cross_fusion", "path": "./waymo_dataset/splits_clft/"},
     "General": {
         "device": "cuda:0",
-        "epochs": 50,
+        "epochs": 100,
         "batch_size": 12,
         "path_predicted_images": "output",
         "seed": 0,
         "resume_training": false,
         "reset_lr": false,
         "early_stop_patience": 200,
-        "max_epochs": 10,
+        "max_epochs": 2,
         "model_path": ""
     },
     "Log": {"logdir": "./logs/waymo/clft/config_7/"},

@@ -190,6 +190,23 @@ class TestingEngine:
                 'ap': ap
             }
         
+        # Calculate additional overall metrics
+        pixel_accuracy = accumulators['pixel_correct'] / accumulators['pixel_total'] if accumulators['pixel_total'] > 0 else 0.0
+        mean_accuracy = torch.mean(eval_recall).item()  # Mean of per-class recalls
+        fw_iou = 0.0
+        if accumulators['class_pixels'].sum() > 0:
+            weights = accumulators['class_pixels'] / accumulators['class_pixels'].sum()
+            fw_iou = (weights * eval_IoU).sum().item()
+        
+        # Add overall metrics
+        results['overall'] = {
+            'mIoU_foreground': torch.mean(eval_IoU).item(),
+            'mean_accuracy': mean_accuracy,
+            'fw_iou': fw_iou,
+            'pixel_accuracy': pixel_accuracy.item(),
+            'confusion_matrix': accumulators['confusion_matrix'].cpu().tolist()
+        }
+        
         return results
     
     def _compute_ap_for_class(self, cls_name, all_predictions, all_targets):
@@ -254,9 +271,20 @@ class TestingEngine:
         """Print test results."""
         print('-----------------------------------------')
         for cls, metrics in results.items():
+            if cls == 'overall':
+                continue
             print(f'{cls.upper()}: IoU->{metrics["iou"]:.4f} '
                   f'Precision->{metrics["precision"]:.4f} '
                   f'Recall->{metrics["recall"]:.4f} '
                   f'F1->{metrics["f1_score"]:.4f} '
                   f'AP->{metrics["ap"]:.4f}')
+        
+        # Print overall metrics
+        overall = results.get('overall', {})
+        if overall:
+            print('-----------------------------------------')
+            print(f'mIoU (foreground): {overall.get("mIoU_foreground", 0):.4f}')
+            print(f'Mean Accuracy: {overall.get("mean_accuracy", 0):.4f}')
+            print(f'Frequency-Weighted IoU: {overall.get("fw_iou", 0):.4f}')
+            print(f'Pixel Accuracy: {overall.get("pixel_accuracy", 0):.4f}')
         print('-----------------------------------------')
