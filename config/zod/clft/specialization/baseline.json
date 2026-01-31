@@ -1,7 +1,7 @@
 {
-    "Summary": "ZOD Fusion CLFT-Hybrid",
-    "tags": ["ZOD", "CLFT-Hybrid", "Fusion"],
-    "CLI": {"backbone": "clft", "mode": "cross_fusion", "path": "./zod_dataset/"},
+    "Summary": "ZOD RGB CLFT-Hybrid Baseline",
+    "tags": ["ZOD", "CLFT-Hybrid", "RGB", "Baseline"],
+    "CLI": {"backbone": "clft", "mode": "rgb", "path": "./zod_dataset/"},
     "General": {
         "device": "cuda:0",
         "epochs": 200,
