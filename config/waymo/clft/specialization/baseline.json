@@ -1,7 +1,7 @@
 {
-    "Summary": "Waymo Fusion CLFT-Hybrid",
-    "tags": ["Waymo", "CLFT-Hybrid", "Fusion", "Baseline"],
-    "CLI": {"backbone": "clft", "mode": "cross_fusion", "path": "./waymo_dataset/splits_clft/"},
+    "Summary": "Waymo RGB CLFT-Hybrid Baseline",
+    "tags": ["Waymo", "CLFT-Hybrid", "RGB", "Baseline"],
+    "CLI": {"backbone": "clft", "mode": "rgb", "path": "./waymo_dataset/splits_clft/"},
     "General": {
         "device": "cuda:0",
         "epochs": 100,
