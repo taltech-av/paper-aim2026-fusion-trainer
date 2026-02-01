@@ -72,22 +72,38 @@ class CLFT(nn.Module):
             self.head_segmentation = HeadSeg(resample_dim, nclasses=nclasses)
 
     def forward(self, rgb, lidar, modal='rgb'):
-        t = self.transformer_encoders(lidar)
+        if modal == 'rgb':
+            self.transformer_encoders(rgb)
+            activation_result = self.activation
+        elif modal == 'lidar':
+            self.transformer_encoders(lidar)
+            activation_result = self.activation
+        elif modal == 'cross_fusion':
+            # Run on rgb to get RGB activations
+            self.transformer_encoders(rgb)
+            activation_rgb = self.activation.copy()
+            # Run on lidar to get LiDAR activations
+            self.transformer_encoders(lidar)
+            activation_lidar = self.activation.copy()
+        
         previous_stage = None
         for i in np.arange(len(self.fusions)-1, -1, -1):
             hook_to_take = 't'+str(self.hooks[i])
-            activation_result = self.activation[hook_to_take]
             if modal == 'rgb':
-                reassemble_result_RGB = self.reassembles_RGB[i](activation_result) #claude check here
-                reassemble_result_XYZ = torch.zeros_like(reassemble_result_RGB) # this is just to keep the space allocated but it will not be used later in fusion
-            if modal == 'lidar':
-                reassemble_result_XYZ = self.reassembles_XYZ[i](activation_result) #claude check here
-                reassemble_result_RGB = torch.zeros_like(reassemble_result_XYZ) # this is just to keep the space allocated but it will not be used later in fusion
-            if modal == 'cross_fusion':
-                reassemble_result_RGB = self.reassembles_RGB[i](activation_result) #claude check here
-                reassemble_result_XYZ = self.reassembles_XYZ[i](activation_result) #claude check here
+                activation_result_current = activation_result[hook_to_take]
+                reassemble_result_RGB = self.reassembles_RGB[i](activation_result_current)
+                reassemble_result_XYZ = torch.zeros_like(reassemble_result_RGB)
+            elif modal == 'lidar':
+                activation_result_current = activation_result[hook_to_take]
+                reassemble_result_XYZ = self.reassembles_XYZ[i](activation_result_current)
+                reassemble_result_RGB = torch.zeros_like(reassemble_result_XYZ)
+            elif modal == 'cross_fusion':
+                activation_rgb_current = activation_rgb[hook_to_take]
+                activation_lidar_current = activation_lidar[hook_to_take]
+                reassemble_result_RGB = self.reassembles_RGB[i](activation_rgb_current)
+                reassemble_result_XYZ = self.reassembles_XYZ[i](activation_lidar_current)
             
-            fusion_result = self.fusions[i](reassemble_result_RGB, reassemble_result_XYZ, previous_stage, modal) #claude check here
+            fusion_result = self.fusions[i](reassemble_result_RGB, reassemble_result_XYZ, previous_stage, modal)
             previous_stage = fusion_result
         out_depth = None
         out_segmentation = None

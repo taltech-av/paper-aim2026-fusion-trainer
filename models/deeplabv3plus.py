@@ -11,6 +11,49 @@ import torch.nn.functional as F
 from torchvision.models import resnet101, ResNet101_Weights
 
 
+class ResidualConvUnit(nn.Module):
+    def __init__(self, features):
+        super().__init__()
+
+        self.conv1 = nn.Conv2d(features, features, kernel_size=3, stride=1, padding=1, bias=True)
+        self.conv2 = nn.Conv2d(features, features, kernel_size=3, stride=1, padding=1, bias=True)
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        """Forward pass.
+        Args:
+            x (tensor): input
+        Returns:
+            tensor: output
+        """
+        out = self.relu(x)
+        out = self.conv1(out)
+        out = self.relu(out)
+        out = self.conv2(out)
+        return out + x
+
+
+class Fusion(nn.Module):
+    def __init__(self, resample_dim, fusion_strategy='residual_average'):
+        super(Fusion, self).__init__()
+        self.resample_dim = resample_dim
+        self.fusion_strategy = fusion_strategy
+        
+        if self.fusion_strategy != 'residual_average':
+            raise ValueError(f"Only 'residual_average' fusion strategy is supported, got: {self.fusion_strategy}")
+
+    def forward(self, rgb, lidar, previous_stage=None, modal='cross_fusion'):
+        if modal == 'cross_fusion':
+            # Simple residual average fusion: just average the features
+            fused_feat = (rgb + lidar) / 2
+            if previous_stage is not None:
+                previous_stage = nn.functional.interpolate(previous_stage, size=fused_feat.shape[2:], mode='bilinear', align_corners=False)
+                fused_feat = fused_feat + previous_stage
+            return fused_feat
+        else:
+            raise ValueError(f"Only 'cross_fusion' modal is supported for fusion, got: {modal}")
+
+
 class ASPP(nn.Module):
     """Atrous Spatial Pyramid Pooling module."""
     
@@ -197,54 +240,67 @@ class DeepLabV3Plus(nn.Module):
 class DeepLabV3PlusLateFusion(nn.Module):
     """
     DeepLabV3+ with late fusion for camera-LiDAR data.
-    Uses two separate DeepLabV3+ networks and fuses predictions.
+    Uses two separate DeepLabV3+ networks and fuses features using advanced fusion strategies.
     """
     
-    def __init__(self, num_classes, fusion_type='learned', pretrained=True):
+    def __init__(self, num_classes, fusion_strategy='residual_average', pretrained=True, resample_dim=256, backbone='resnet50'):
         super(DeepLabV3PlusLateFusion, self).__init__()
         
-        self.fusion_type = fusion_type
+        self.fusion_strategy = fusion_strategy
         
-        # RGB branch
-        self.rgb_branch = DeepLabV3Plus(num_classes, backbone='resnet101', pretrained=pretrained)
+        # RGB branch - use lighter backbone
+        self.rgb_branch = DeepLabV3Plus(num_classes, backbone=backbone, pretrained=pretrained)
         
         # LiDAR branch (pretrained on ImageNet but will learn LiDAR features)
-        self.lidar_branch = DeepLabV3Plus(num_classes, backbone='resnet101', pretrained=pretrained)
+        self.lidar_branch = DeepLabV3Plus(num_classes, backbone=backbone, pretrained=pretrained)
         
-        # Fusion layer (if learned)
-        if fusion_type == 'learned':
-            self.fusion_conv = nn.Sequential(
-                nn.Conv2d(num_classes * 2, 128, 3, padding=1, bias=False),
-                nn.BatchNorm2d(128),
-                nn.ReLU(inplace=True),
-                nn.Dropout(0.1),
-                nn.Conv2d(128, num_classes, 1)
-            )
-        elif fusion_type == 'weighted':
-            # Learnable weights for weighted average
-            self.rgb_weight = nn.Parameter(torch.tensor(0.5))
-            self.lidar_weight = nn.Parameter(torch.tensor(0.5))
+        # Remove the final classifier from both branches since we'll fuse before classification
+        # We'll add a shared classifier after fusion
+        self.rgb_branch.decoder.classifier = nn.Identity()
+        self.lidar_branch.decoder.classifier = nn.Identity()
+        
+        # Shared classifier after fusion
+        self.classifier = nn.Conv2d(256, num_classes, 1)
+        
+        # Fusion module using the same strategies as Swin
+        self.fusion = Fusion(resample_dim, fusion_strategy=fusion_strategy)
     
-    def forward(self, rgb, lidar):
-        # Get predictions from both branches
-        rgb_pred = self.rgb_branch(rgb)
-        lidar_pred = self.lidar_branch(lidar)
-        
-        # Fuse predictions
-        if self.fusion_type == 'average':
-            # Simple averaging
-            out = (rgb_pred + lidar_pred) / 2
-        elif self.fusion_type == 'weighted':
-            # Learnable weighted average
-            out = self.rgb_weight * rgb_pred + self.lidar_weight * lidar_pred
-        elif self.fusion_type == 'learned':
-            # Concatenate and learn fusion
-            concat = torch.cat([rgb_pred, lidar_pred], dim=1)
-            out = self.fusion_conv(concat)
+    def forward(self, rgb, lidar, modality='cross_fusion'):
+        if modality == 'cross_fusion':
+            input_size = rgb.size()[2:]
+            
+            # Get features from both branches (before final classification)
+            rgb_feat = self.rgb_branch(rgb)
+            lidar_feat = self.lidar_branch(lidar)
+            
+            # Apply fusion
+            fused_feat = self.fusion(rgb_feat, lidar_feat, previous_stage=None, modal='cross_fusion')
+            
+            # Final classification
+            out = self.classifier(fused_feat)
+            
+            # Upsample to input size
+            out = F.interpolate(out, size=input_size, mode='bilinear', align_corners=True)
+            
+            # Also compute individual branch predictions for compatibility
+            rgb_pred = self.classifier(rgb_feat)
+            rgb_pred = F.interpolate(rgb_pred, size=input_size, mode='bilinear', align_corners=True)
+            
+            lidar_pred = self.classifier(lidar_feat)
+            lidar_pred = F.interpolate(lidar_pred, size=input_size, mode='bilinear', align_corners=True)
+            
+            # Return format: (fused_output, rgb_pred, lidar_pred)
+            return out, rgb_pred, lidar_pred
         else:
-            raise ValueError(f"Unsupported fusion type: {self.fusion_type}")
-        
-        return out, rgb_pred, lidar_pred
+            # For single modality, use the appropriate branch
+            if modality == 'rgb':
+                pred = self.rgb_branch(rgb)
+                return pred, None, None
+            elif modality == 'lidar':
+                pred = self.lidar_branch(lidar)
+                return pred, None, None
+            else:
+                raise ValueError(f"Invalid modality: {modality}")
     
     def forward_single(self, x, modality='rgb'):
         """Forward pass for single modality (for evaluation)."""
@@ -256,28 +312,29 @@ class DeepLabV3PlusLateFusion(nn.Module):
             raise ValueError(f"Invalid modality: {modality}")
 
 
-def build_deeplabv3plus(num_classes, mode='rgb', fusion_type='learned', pretrained=True):
+def build_deeplabv3plus(num_classes, mode='rgb', fusion_strategy='residual_average', pretrained=True, backbone='resnet101'):
     """
     Build DeepLabV3+ model based on configuration.
     
     Args:
         num_classes (int): Number of output classes
         mode (str): 'rgb' for RGB-only, 'lidar' for LiDAR-only, 'fusion' for late fusion
-        fusion_type (str): Type of fusion ('average', 'weighted', 'learned')
+        fusion_strategy (str): Fusion strategy ('residual_average')
         pretrained (bool): Use ImageNet pretrained weights
+        backbone (str): Backbone architecture ('resnet50', 'resnet101')
     
     Returns:
         nn.Module: DeepLabV3+ model
     """
     if mode == 'rgb':
-        print(f"Building DeepLabV3+ (RGB-only) with {num_classes} classes")
-        return DeepLabV3Plus(num_classes, backbone='resnet101', pretrained=pretrained)
+        print(f"Building DeepLabV3+ (RGB-only) with {num_classes} classes, backbone: {backbone}")
+        return DeepLabV3Plus(num_classes, backbone=backbone, pretrained=pretrained)
     elif mode == 'lidar':
-        print(f"Building DeepLabV3+ (LiDAR-only) with {num_classes} classes")
-        return DeepLabV3Plus(num_classes, backbone='resnet101', pretrained=pretrained)
+        print(f"Building DeepLabV3+ (LiDAR-only) with {num_classes} classes, backbone: {backbone}")
+        return DeepLabV3Plus(num_classes, backbone=backbone, pretrained=pretrained)
     elif mode == 'fusion':
-        print(f"Building DeepLabV3+ (Late Fusion - {fusion_type}) with {num_classes} classes")
-        return DeepLabV3PlusLateFusion(num_classes, fusion_type=fusion_type, pretrained=pretrained)
+        print(f"Building DeepLabV3+ (Late Fusion - {fusion_strategy}) with {num_classes} classes, backbone: {backbone}")
+        return DeepLabV3PlusLateFusion(num_classes, fusion_strategy=fusion_strategy, pretrained=pretrained, backbone=backbone)
     else:
         raise ValueError(f"Unsupported mode: {mode}")
 
@@ -296,7 +353,7 @@ if __name__ == '__main__':
     
     # Test late fusion model
     print("\nTesting late fusion model:")
-    model_fusion = build_deeplabv3plus(num_classes=4, mode='fusion', fusion_type='learned').to(device)
+    model_fusion = build_deeplabv3plus(num_classes=4, mode='fusion', fusion_strategy='residual_average', backbone='resnet50').to(device)
     x_lidar = torch.randn(2, 3, 384, 384).to(device)
     out_fusion, out_rgb_branch, out_lidar_branch = model_fusion(x_rgb, x_lidar)
     print(f"RGB input shape: {x_rgb.shape}")

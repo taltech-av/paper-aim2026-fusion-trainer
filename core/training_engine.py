@@ -53,7 +53,19 @@ class TrainingEngine:
             
             # Forward pass with mixed precision
             with autocast('cuda'):
-                _, output_seg = self.model(rgb_input, lidar_input, modality)
+                model_outputs = self.model(rgb_input, lidar_input, modality)
+                if modality == 'cross_fusion':
+                    # For fusion: check if first output is None (depth models)
+                    if model_outputs[0] is None:
+                        output_seg = model_outputs[1]  # segmentation output
+                    else:
+                        output_seg = model_outputs[0]  # direct segmentation output
+                else:
+                    # For single modality: check if first output is None (depth models)
+                    if model_outputs[0] is None:
+                        output_seg = model_outputs[1]  # segmentation output
+                    else:
+                        output_seg = model_outputs[0]  # direct segmentation output
                 output_seg = output_seg.squeeze(1)
                 
                 # Relabel annotation
@@ -103,7 +115,19 @@ class TrainingEngine:
                 
                 # Forward pass with mixed precision
                 with autocast('cuda'):
-                    _, output_seg = self.model(rgb_input, lidar_input, modality)
+                    model_outputs = self.model(rgb_input, lidar_input, modality)
+                    if modality == 'cross_fusion':
+                        # For fusion: check if first output is None (depth models)
+                        if model_outputs[0] is None:
+                            output_seg = model_outputs[1]  # segmentation output
+                        else:
+                            output_seg = model_outputs[0]  # direct segmentation output
+                    else:
+                        # For single modality: check if first output is None (depth models)
+                        if model_outputs[0] is None:
+                            output_seg = model_outputs[1]  # segmentation output
+                        else:
+                            output_seg = model_outputs[0]  # direct segmentation output
                     output_seg = output_seg.squeeze(1)
                     
                     # Relabel annotation

@@ -225,145 +225,8 @@ class SwinBenchmarker:
 
         return flops_info
 
-    def _calculate_deeplab_flops(self, model, config):
-        """Calculate FLOPS for DeepLabV3+ model."""
-        rgb, _ = self._create_dummy_input(config, 'rgb')
 
-        # Move inputs to same device as model
-        rgb = rgb.to(self.device)
 
-        flops_info = {
-            'flops_available': False,
-            'total_flops': None,
-            'flops_giga': None,
-            'flops_method': None
-        }
-
-        # Try thop first
-        if THOP_AVAILABLE:
-            try:
-                flops, params = profile(model, inputs=(rgb,), verbose=False)
-
-                flops_info.update({
-                    'flops_available': True,
-                    'total_flops': flops,
-                    'flops_giga': flops / 1e9,
-                    'flops_method': 'thop'
-                })
-            except Exception as e:
-                print(f"thop profiling failed: {e}")
-
-        # Try fvcore as fallback
-        if not flops_info['flops_available'] and FVCORE_AVAILABLE:
-            try:
-                flop_analyzer = FlopCountAnalysis(model, (rgb,))
-
-                total_flops = flop_analyzer.total()
-                flops_info.update({
-                    'flops_available': True,
-                    'total_flops': total_flops,
-                    'flops_giga': total_flops / 1e9,
-                    'flops_method': 'fvcore'
-                })
-            except Exception as e:
-                print(f"fvcore profiling failed: {e}")
-
-        return flops_info
-
-    def _measure_deeplab_inference_time(self, model, config, num_runs=100, warmup_runs=10):
-        """Measure inference time and memory usage for DeepLabV3+ on current device."""
-        model.eval()
-        rgb, _ = self._create_dummy_input(config, 'rgb')
-
-        # Move inputs to device
-        rgb = rgb.to(self.device)
-
-        # Get baseline memory usage after model loading
-        baseline_gpu_memory = torch.cuda.memory_allocated() / (1024**2) if self.device.type == 'cuda' else 0
-        baseline_ram_memory = psutil.Process().memory_info().rss / (1024**2)
-
-        # Warmup runs
-        with torch.no_grad():
-            for _ in range(warmup_runs):
-                _ = model(rgb)
-
-        # Synchronize before timing
-        if self.device.type == 'cuda':
-            torch.cuda.synchronize()
-
-        # Initialize memory tracking
-        gpu_memory_usage = []
-        ram_memory_usage = []
-
-        # Timed runs
-        times = []
-        with torch.no_grad():
-            for _ in range(num_runs):
-                start_time = time.time()
-
-                _ = model(rgb)
-
-                # Synchronize after inference
-                if self.device.type == 'cuda':
-                    torch.cuda.synchronize()
-
-                end_time = time.time()
-                times.append(end_time - start_time)
-
-                # Track memory usage
-                if self.device.type == 'cuda':
-                    # GPU memory usage in MB
-                    gpu_memory_usage.append(torch.cuda.memory_allocated() / (1024**2))
-                else:
-                    # RAM usage in MB
-                    ram_memory_usage.append(psutil.Process().memory_info().rss / (1024**2))
-
-        times = np.array(times)
-
-        result = {
-            'mean_time_ms': np.mean(times) * 1000,
-            'std_time_ms': np.std(times) * 1000,
-            'min_time_ms': np.min(times) * 1000,
-            'max_time_ms': np.max(times) * 1000,
-            'fps': 1.0 / np.mean(times),
-            'num_runs': num_runs,
-            'baseline_gpu_memory_mb': baseline_gpu_memory,
-            'baseline_ram_memory_mb': baseline_ram_memory
-        }
-
-        # Add memory usage statistics
-        if self.device.type == 'cuda' and gpu_memory_usage:
-            gpu_memory = np.array(gpu_memory_usage)
-            result.update({
-                'gpu_memory_mean_mb': np.mean(gpu_memory),
-                'gpu_memory_std_mb': np.std(gpu_memory),
-                'gpu_memory_max_mb': np.max(gpu_memory)
-            })
-        elif self.device.type == 'cpu' and ram_memory_usage:
-            ram_memory = np.array(ram_memory_usage)
-            result.update({
-                'ram_memory_mean_mb': np.mean(ram_memory),
-                'ram_memory_std_mb': np.std(ram_memory),
-                'ram_memory_max_mb': np.max(ram_memory)
-            })
-
-        # Always measure both GPU and RAM memory for comparison
-        if gpu_memory_usage:
-            gpu_memory = np.array(gpu_memory_usage)
-            result.update({
-                'gpu_memory_mean_mb': np.mean(gpu_memory),
-                'gpu_memory_std_mb': np.std(gpu_memory),
-                'gpu_memory_max_mb': np.max(gpu_memory)
-            })
-        if ram_memory_usage:
-            ram_memory = np.array(ram_memory_usage)
-            result.update({
-                'ram_memory_mean_mb': np.mean(ram_memory),
-                'ram_memory_std_mb': np.std(ram_memory),
-                'ram_memory_max_mb': np.max(ram_memory)
-            })
-
-        return result
 
     def _measure_inference_time(self, model, config, modality='rgb', num_runs=100, warmup_runs=10):
         """Measure inference time and memory usage on current device."""
@@ -555,67 +418,6 @@ class SwinBenchmarker:
         if 'ram_memory_mean_mb' in timing_info:
             print(f"  RAM Memory: {timing_info['ram_memory_mean_mb']:.1f}±{timing_info['ram_memory_std_mb']:.1f}MB")
 
-    def benchmark_deeplab_config(self, config_path):
-        """Benchmark a single DeepLabV3+ configuration."""
-        print(f"\n{'='*60}")
-        print(f"Benchmarking: {os.path.basename(config_path)}")
-        print(f"{'='*60}")
-
-        config = self._load_config(config_path)
-        modality = config['CLI']['mode']  # Get modality from config
-
-        # Build DeepLab model
-        from models.deeplabv3plus import build_deeplabv3plus
-        num_classes = len(config['Dataset']['train_classes'])
-        pretrained = config['DeepLabV3Plus'].get('pretrained', False)
-        model = build_deeplabv3plus(
-            num_classes=num_classes,
-            mode=modality,
-            pretrained=pretrained
-        )
-        model.to(self.device)
-
-        # Get model info
-        model_info = self._count_parameters(model)
-        model_info.update({
-            'model_name': config.get('Summary', 'Unknown'),
-            'backbone': config['CLI']['backbone'],
-            'dataset': config['Dataset']['name'],
-            'image_size': config['Dataset']['transforms']['resize'],
-            'pretrained': pretrained
-        })
-
-        print(f"\nTesting modality: {modality.upper()}")
-
-        # Calculate FLOPS
-        flops_info = self._calculate_deeplab_flops(model, config)
-
-        # Measure inference time
-        timing_info = self._measure_deeplab_inference_time(model, config)
-
-        # Combine results
-        result = {
-            'config_path': config_path,
-            'modality': modality,
-            **model_info,
-            **flops_info,
-            **timing_info,
-            'device': str(self.device),
-            'device_type': self.device.type
-        }
-
-        self.results.append(result)
-
-        # Print summary
-        print(f"  Parameters: {model_info['total_parameters_m']:.1f}M")
-        if flops_info['flops_available']:
-            print(f"  FLOPS: {flops_info['flops_giga']:.2f}G ({flops_info['flops_method']})")
-        print(f"  Inference: {timing_info['mean_time_ms']:.2f}±{timing_info['std_time_ms']:.2f}ms")
-        print(f"  FPS: {timing_info['fps']:.1f}")
-        if 'gpu_memory_mean_mb' in timing_info:
-            print(f"  GPU Memory: {timing_info['gpu_memory_mean_mb']:.1f}±{timing_info['gpu_memory_std_mb']:.1f}MB")
-        if 'ram_memory_mean_mb' in timing_info:
-            print(f"  RAM Memory: {timing_info['ram_memory_mean_mb']:.1f}±{timing_info['ram_memory_std_mb']:.1f}MB")
 
     def benchmark_all_configs(self):
         """Benchmark all configurations."""
@@ -628,10 +430,8 @@ class SwinBenchmarker:
                 config = self._load_config(config_path)
                 backbone = config['CLI']['backbone']
                 
-                if backbone in ['clft', 'swin_fusion']:
+                if backbone in ['swin_fusion']:
                     self.benchmark_config(config_path)
-                elif backbone == 'deeplabv3plus':
-                    self.benchmark_deeplab_config(config_path)
                 else:
                     print(f"Unsupported backbone {backbone} in {config_path}")
                     continue

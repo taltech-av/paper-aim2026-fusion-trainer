@@ -384,11 +384,15 @@ def test_single_checkpoint(checkpoint_path, config, device, weather_conditions, 
     Returns:
         Dict with results for each weather condition
     """
+    # Get backbone from config
+    backbone = config['DeepLabV3Plus'].get('backbone', 'resnet101')
+    
     # Build model for this checkpoint
     model = build_deeplabv3plus(
         num_classes=num_classes,
         mode=modality,
-        fusion_type=fusion_type,
+        fusion_strategy=fusion_type,
+        backbone=backbone,
         pretrained=False  # Don't load ImageNet weights for testing
     )
     model.to(device)
@@ -498,7 +502,8 @@ def main():
     
     # Determine mode and fusion type
     modality = config['CLI']['mode']
-    fusion_type = config['DeepLabV3Plus'].get('fusion_type', 'learned')
+    fusion_type = config['DeepLabV3Plus'].get('fusion_type') or config['DeepLabV3Plus'].get('fusion_strategy', 'learned')
+    backbone = config['DeepLabV3Plus'].get('backbone', 'resnet101')
     is_fusion = modality == 'fusion'
     
     # Get checkpoint paths

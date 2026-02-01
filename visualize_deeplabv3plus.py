@@ -201,13 +201,15 @@ def main():
 
     # Build and load model
     modality = config['CLI']['mode']
-    fusion_type = config['DeepLabV3Plus'].get('fusion_type', 'learned')
+    fusion_type = config['DeepLabV3Plus'].get('fusion_type') or config['DeepLabV3Plus'].get('fusion_strategy', 'learned')
+    backbone = config['DeepLabV3Plus'].get('backbone', 'resnet101')
     is_fusion = modality == 'fusion'
 
     model = build_deeplabv3plus(
         num_classes=num_classes,
         mode=modality,
-        fusion_type=fusion_type,
+        fusion_strategy=fusion_type,
+        backbone=backbone,
         pretrained=False  # Don't load ImageNet weights for inference
     )
     model.to(device)

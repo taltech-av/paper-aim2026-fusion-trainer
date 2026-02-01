@@ -55,7 +55,22 @@ class TestingEngine:
                 inference_start = time.time()
                 
                 # Forward pass
-                _, output_seg = self.model(rgb_input, lidar_input, modality)
+                model_outputs = self.model(rgb_input, lidar_input, modality)
+                if isinstance(model_outputs, tuple):
+                    if len(model_outputs) == 2:
+                        # (depth, segmentation) format
+                        if model_outputs[0] is None:
+                            output_seg = model_outputs[1]
+                        else:
+                            output_seg = model_outputs[0]
+                    elif len(model_outputs) == 3:
+                        # (segmentation, None, None) format
+                        output_seg = model_outputs[0]
+                    else:
+                        raise ValueError(f"Unexpected model output format: {len(model_outputs)} outputs")
+                else:
+                    # Single output
+                    output_seg = model_outputs
                 output_seg = output_seg.squeeze(1)
                 
                 # Synchronize and record time

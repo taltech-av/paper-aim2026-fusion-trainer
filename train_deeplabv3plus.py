@@ -340,17 +340,18 @@ def main():
     num_eval_classes = calculate_num_eval_classes(config, num_classes)
     print(f"Total classes: {num_classes}, Evaluation classes: {num_eval_classes}")
     
-    # Determine mode and fusion type
+    # Determine mode and fusion strategy
     modality = config['CLI']['mode']
-    fusion_type = config['DeepLabV3Plus'].get('fusion_type', 'learned')
+    fusion_strategy = config['DeepLabV3Plus'].get('fusion_strategy', 'residual_average')
     is_fusion = modality == 'fusion'
     
     # Build model
     model = build_deeplabv3plus(
         num_classes=num_classes,
         mode=modality,
-        fusion_type=fusion_type,
-        pretrained=config['DeepLabV3Plus'].get('pretrained', True)
+        fusion_strategy=fusion_strategy,
+        pretrained=config['DeepLabV3Plus'].get('pretrained', True),
+        backbone=config['DeepLabV3Plus'].get('backbone', 'resnet50')
     )
     model.to(device)
     

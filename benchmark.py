@@ -583,9 +583,11 @@ class CLFTBenchmarker:
         from models.deeplabv3plus import build_deeplabv3plus
         num_classes = len(config['Dataset']['train_classes'])
         pretrained = config['DeepLabV3Plus'].get('pretrained', False)
+        backbone = config['DeepLabV3Plus'].get('backbone', 'resnet101')
         model = build_deeplabv3plus(
             num_classes=num_classes,
             mode=modality,
+            backbone=backbone,
             pretrained=pretrained
         )
         model.to(self.device)
