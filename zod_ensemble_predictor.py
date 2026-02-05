@@ -11,7 +11,6 @@ import numpy as np
 from pathlib import Path
 
 from clft.clft import CLFT
-from zod_ensemble_predictor import ZODEnsemblePredictor
 
 
 class ZODMergedEnsemblePredictor:
