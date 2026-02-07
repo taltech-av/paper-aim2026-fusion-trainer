@@ -52,7 +52,7 @@
         "dataset_classes": [
             {"name": "background", "index": 0},
             {"name": "vehicle", "index": 1},
-            {"name": "pedestrian", "index": 2}
+            {"name": "human", "index": 2}
         ],
         "train_classes": [
             {"name": "background", "index": 0, "weight": 0.5, "dataset_mapping": [0], "color": [0, 0, 0]},

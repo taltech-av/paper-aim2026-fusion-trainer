@@ -1,6 +1,6 @@
 {
-    "Summary": "Iseauto Fusion CLFT-Large",
-    "tags": ["Iseauto", "CLFT-Large", "Fusion"],
+    "Summary": "Iseauto Specialization Human-Only Fusion CLFT-Hybrid",
+    "tags": ["Iseauto", "CLFT-Hybrid", "Fusion"],
     "CLI": {"backbone": "clft", "mode": "cross_fusion", "path": "./xod_dataset/"},
     "General": {
         "device": "cuda:0",
@@ -14,11 +14,11 @@
         "max_epochs": 2,
         "model_path": ""
     },
-    "Log": {"logdir": "./logs/iseauto/clft/config_9/"},
+    "Log": {"logdir": "./logs/iseauto/clft/specialization/human_only/"},
     "CLFT": {
-        "emb_dim": 1024,
-        "hooks": [5, 11, 17, 23],
-        "model_timm": "vit_large_patch16_384",
+        "emb_dim": 768,
+        "hooks": [2, 5, 8, 11],
+        "model_timm": "vit_base_resnet50_384",
         "clft_lr": 8e-05,
         "patch_size": 16,
         "reassembles": [4, 8, 16, 32],
@@ -54,9 +54,8 @@
             {"name": "human", "index": 2}
         ],
         "train_classes": [
-            {"name": "background", "index": 0, "weight": 0.5, "dataset_mapping": [0], "color": [0, 0, 0]},
-            {"name": "vehicle", "index": 1, "weight": 4.0, "dataset_mapping": [1], "color": [128, 0, 128]},
-            {"name": "human", "index": 2, "weight": 12.0, "dataset_mapping": [2], "color": [0, 255, 255]}
+            {"name": "background", "index": 0, "weight": 0.5, "dataset_mapping": [0, 1], "color": [0, 0, 0]},
+            {"name": "human", "index": 1, "weight": 12.0, "dataset_mapping": [2], "color": [0, 255, 255]}
         ]
     }
 }

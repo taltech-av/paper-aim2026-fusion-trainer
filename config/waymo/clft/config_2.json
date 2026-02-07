@@ -5,7 +5,7 @@
     "General": {
         "device": "cuda:0",
         "epochs": 100,
-        "batch_size": 12,
+        "batch_size": 8,
         "path_predicted_images": "output",
         "seed": 0,
         "resume_training": false,
