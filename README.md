@@ -1,18 +1,17 @@
 # Fusion Training: CLFTv2
 
-This repository contains the implementation for the paper "CLFTv2: Hierarchical Vision Transformers for Camera-LiDAR Foreground Segmentation in Autonomous Driving".
+This repository contains the implementation for the paper "SAM-Enhanced Segmentation on ZOD and Iseauto: Balancing Critical Classes in Autonomous Driving".
 
 ## Abstract
 
-Resilient semantic segmentation in autonomous driving relies on effectively fusing the complementary information from camera and LiDAR sensors. 
-While recent Transformer-based fusion architectures surpass CNNs in global context modeling, standard Vision Transformers (ViT) are hindered by quadratic computational complexity and fixed-scale processing, which limits their ability to resolve small, distant objects.
-To address these challenges, we present CLFTv2, a practical multi-modal framework that adapts the Swin Transformer architecture for camera-LiDAR fusion. 
-By leveraging shifted window attention, our approach achieves linear complexity scaling with input size, enabling scalable processing of high-resolution sensor data.
-We employ hierarchical feature pyramids and progressive fusion strategies to integrate sparse geometric features with dense semantic maps across multiple scales, specifically targeting the detection of Vulnerable Road Users (VRUs).
-Furthermore, we address the label scarcity in the Zenseact Open Dataset (ZOD) by developing an automated annotation pipeline using the Segment Anything Model (SAM) to generate dense segmentation masks from bounding boxes.
-Extensive experiments show that CLFTv2 achieves strong performance with a foreground mIoU of 57.9\% and frequency-weighted IoU of 64.8\% on the Waymo Open Dataset validation set and 50.2\% mIoU (61.7\% FW IoU) on ZOD set, outperforming previous baselines.
-Notably, our fusion approach yields substantial safety improvements, achieving up to 59.7\% IoU for pedestrians on Waymo and 41.4\% on ZOD, respectively.
-Our code and data processing pipeline are publicly released to support further research.
+Dense semantic segmentation is critical for autonomous driving, yet many multi-modal datasets lack pixel-level annotations.
+Although the Zenseact Open Dataset (ZOD) provides rich multi-modal data from Northern European environments, it contains only bounding box annotations unsuitable for semantic segmentation.
+We present a Segment Anything Model (SAM)-based pipeline that converts ZOD's bounding boxes into dense pixel-level masks, yielding a carefully curated 2300-frame segmentation subset with 36\% acceptance rate after manual quality inspection.
+This enables, for the first time, dense multi-modal segmentation training and benchmarking on ZOD.
+We compare transformer-based CLFT and CNN-based DeepLabV3+ architectures across diverse weather conditions, achieving up to 48.1\% mIoU with CLFT-Hybrid Fusion.
+To address severe class imbalance, where safety-critical objects comprise less than 1\% of pixels, we investigate model specialization with dedicated modules for large-scale (vehicles) and small-scale (vulnerable road users, signs) objects.
+We validate our approach on the Iseauto autonomous vehicle platform with SAM-enhanced manual annotations, achieving 77.5\% mIoU in fusion settings, and demonstrate effective bidirectional transfer learning between ZOD and Iseauto datasets.
+All code, training pipelines, and results are released as open-source to enable reproducible research.
 
 ## Setup Virtual Environment
 
