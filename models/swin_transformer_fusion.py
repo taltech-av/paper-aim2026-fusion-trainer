@@ -327,6 +327,7 @@ class SwinTransformerFusion(nn.Module):
         self.transformer_encoders = timm.create_model(model_timm, pretrained=pretrained, features_only=True)
         self.type_ = type
         self.is_spatial = True
+        self.resample_dim = resample_dim
         
         # Automatically detect embedding dimensions from the backbone
         if hasattr(self.transformer_encoders, 'feature_info'):
@@ -408,11 +409,11 @@ class SwinTransformerFusion(nn.Module):
         if self.head_segmentation != None:
             out_segmentation = self.head_segmentation(previous_stage)
         
-        # Interpolate to input resolution (256x256)
+        # Interpolate to input resolution (resample_dim x resample_dim)
         if out_depth is not None:
-            out_depth = nn.functional.interpolate(out_depth, size=(256, 256), mode='bilinear', align_corners=False)
+            out_depth = nn.functional.interpolate(out_depth, size=(self.resample_dim, self.resample_dim), mode='bilinear', align_corners=False)
         if out_segmentation is not None:
-            out_segmentation = nn.functional.interpolate(out_segmentation, size=(256, 256), mode='bilinear', align_corners=False)
+            out_segmentation = nn.functional.interpolate(out_segmentation, size=(self.resample_dim, self.resample_dim), mode='bilinear', align_corners=False)
         
         return out_depth, out_segmentation
 

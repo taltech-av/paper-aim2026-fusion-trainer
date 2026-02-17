@@ -175,6 +175,8 @@ def main():
     if args.path is None:
         if config['Dataset']['name'] == 'waymo':
             args.path = 'waymo_dataset/splits_clft/visualizations.txt'
+        elif config['Dataset']['name'] == 'iseauto':
+            args.path = 'xod_dataset/visualization.txt'
         else:
             args.path = 'zod_dataset/visualizations.txt'
     print(f"Using visualization list: {args.path}")

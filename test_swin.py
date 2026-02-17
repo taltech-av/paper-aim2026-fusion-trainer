@@ -206,6 +206,8 @@ def setup_dataset(config, weather_condition=None):
             dataset_name = config['Dataset'].get('name', 'zod')
             if dataset_name == 'waymo':
                 base_path = "./waymo_dataset/splits_clft"
+            elif dataset_name == 'iseauto':
+                base_path = "./xod_dataset"
             else:
                 base_path = "./zod_dataset"
                 
