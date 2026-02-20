@@ -1,6 +1,6 @@
 {
     "Summary": "ZOD Ablation (Spatial Fusion)",
-    "tags": ["ZOD", "CLFTv2-SwinV2-Tiny", "Fusion", "Spatial Fusion"],
+    "tags": ["ZOD", "CLFTv2-Tiny", "Fusion", "Spatial Fusion"],
     "CLI": {"backbone": "swin_fusion", "mode": "cross_fusion", "path": "./zod_dataset/"},
     "General": {
         "device": "cuda:0",

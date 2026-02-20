@@ -1,6 +1,6 @@
 {
     "Summary": "Waymo Ablation (ResConv Fusion)",
-    "tags": ["Waymo", "CLFTv2-SwinV2-Tiny", "Fusion", "ResConv Fusion"],
+    "tags": ["Waymo", "CLFTv2-Tiny", "Fusion", "ResConv Fusion"],
     "CLI": {"backbone": "swin_fusion", "mode": "cross_fusion", "path": "./waymo_dataset/splits_clft/"},
     "General": {
         "device": "cuda:0",

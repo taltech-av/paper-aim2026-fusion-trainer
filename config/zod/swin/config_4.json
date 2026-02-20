@@ -1,6 +1,6 @@
 {
     "Summary": "ZOD CLFTv2-Tiny LiDAR-Only",
-    "tags": ["ZOD", "CLFTv2-SwinV2-Tiny", "LiDAR"],
+    "tags": ["ZOD", "CLFTv2-Tiny", "LiDAR"],
     "CLI": {"backbone": "swin_fusion", "mode": "lidar", "path": "./zod_dataset/"},
     "General": {
         "device": "cuda:0",
@@ -18,7 +18,7 @@
     "SwinFusion": {
         "emb_dims": [96, 192, 384, 768],
         "hooks": [0, 1, 2, 3],
-        "model_timm": "swinv2_tiny_window8_256",
+        "model_timm": "swinv2_small_window16_256",
         "fusion_strategy": "residual_average",
         "clft_lr": 8e-05,
         "patch_size": 4,

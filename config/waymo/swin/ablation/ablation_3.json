@@ -1,6 +1,6 @@
 {
     "Summary": "Waymo Ablation (Simple Adder)",
-    "tags": ["Waymo", "CLFTv2-SwinV2-Tiny", "Fusion", "Simple Adder"],
+    "tags": ["Waymo", "CLFTv2-Tiny", "Fusion", "Simple Adder"],
     "CLI": {"backbone": "swin_fusion", "mode": "cross_fusion", "path": "./waymo_dataset/splits_clft/"},
     "General": {
         "device": "cuda:0",

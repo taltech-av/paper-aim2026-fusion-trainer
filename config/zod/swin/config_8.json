@@ -1,6 +1,6 @@
 {
     "Summary": "ZOD CLFTv2-Base Cross-Fusion",
-    "tags": ["ZOD", "CLFTv2-SwinV2-Base", "CrossFusion"],
+    "tags": ["ZOD", "CLFTv2-Base", "CrossFusion"],
     "CLI": {"backbone": "swin_fusion", "mode": "cross_fusion", "path": "./zod_dataset/"},
     "General": {
         "device": "cuda:0",
@@ -18,13 +18,13 @@
     "SwinFusion": {
         "emb_dims": [128, 256, 512, 1024],
         "hooks": [0, 1, 2, 3],
-        "model_timm": "swinv2_base_window8_256",
+        "model_timm": "swinv2_base_window12to24_192to384_22kft1k",
         "fusion_strategy": "residual_average",
         "clft_lr": 8e-05,
         "patch_size": 4,
         "reassembles": [4, 8, 16, 32],
         "read": "ignore",
-        "resample_dim": 256,
+        "resample_dim": 384,
         "type": "segmentation",
         "lr_momentum": 0.99,
         "pretrained": true
@@ -37,7 +37,7 @@
         "val_split": "./zod_dataset/validation.txt",
         "splits": {"split_train": 0.6, "split_val": 0.2, "split_test": 0.2},
         "transforms": {
-            "resize": 256,
+            "resize": 384,
             "random_rotate_range": 20,
             "p_flip": 0.5,
             "p_crop": 0.3,

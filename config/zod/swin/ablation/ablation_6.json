@@ -1,6 +1,6 @@
 {
     "Summary": "ZOD Ablation (LN-Gated Fusion)",
-    "tags": ["ZOD", "CLFTv2-SwinV2-Tiny", "Fusion", "LN-Gated Fusion"],
+    "tags": ["ZOD", "CLFTv2-Tiny", "Fusion", "LN-Gated Fusion"],
     "CLI": {"backbone": "swin_fusion", "mode": "cross_fusion", "path": "./zod_dataset/"},
     "General": {
         "device": "cuda:0",
