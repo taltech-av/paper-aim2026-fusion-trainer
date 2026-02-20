@@ -41,7 +41,8 @@ def load_image_paths(path_arg, dataroot):
 
 def get_lidar_path(cam_path, dataset_name):
     """Get LiDAR path based on dataset."""
-    if dataset_name == 'zod':
+    # ZOD and ISEAUTO use the same relative layout; Waymo uses a different prefix style
+    if dataset_name in ('zod', 'iseauto'):
         return cam_path.replace('camera', 'lidar_png')
     else:  # waymo
         return cam_path.replace('camera/', 'lidar_png/')
@@ -169,8 +170,11 @@ def main():
 
     # Set default path based on dataset if not provided
     if args.path is None:
-        if config['Dataset']['name'] == 'waymo':
+        dataset_name = config['Dataset'].get('name', '')
+        if dataset_name == 'waymo':
             args.path = 'waymo_dataset/splits_clft/visualizations.txt'
+        elif dataset_name == 'iseauto':
+            args.path = 'xod_dataset/visualizations.txt'
         else:
             args.path = 'zod_dataset/visualizations.txt'
     print(f"Using visualization list: {args.path}")
