@@ -29,6 +29,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import timm
+from scipy.optimize import linear_sum_assignment
 
 
 class ResidualConvUnit(nn.Module):
@@ -161,6 +162,184 @@ class TransformerDecoder(nn.Module):
         return class_logits, masks
 
 
+class MaskFormerCriterion(nn.Module):
+    """Bipartite matching loss for MaskFormer / OneFormer.
+
+    For each image in the batch:
+      1. Extract GT segments from the semantic annotation map
+         (one binary mask + class index per unique class present).
+      2. Build a [Q × M] cost matrix (class + mask-BCE + mask-Dice).
+      3. Run Hungarian algorithm to find the optimal query → GT assignment.
+      4. Compute matched-pair loss (CE + mask BCE + Dice) and
+         unmatched-query no-object CE loss.
+
+    The result is averaged over the batch.
+    """
+
+    def __init__(self,
+                 num_classes: int,
+                 cost_class: float = 1.0,
+                 cost_mask: float = 20.0,   # paper §A.2: λ_bce=20 in cost matrix
+                 cost_dice: float = 1.0,    # paper §A.2: λ_dice=1 in cost matrix
+                 weight_class: float = 2.0,
+                 weight_mask: float = 5.0,
+                 weight_dice: float = 5.0,
+                 no_object_coef: float = 0.1,
+                 class_weights: torch.Tensor | None = None):
+        super().__init__()
+        self.num_classes    = num_classes
+        self.cost_class     = cost_class
+        self.cost_mask      = cost_mask
+        self.cost_dice      = cost_dice
+        self.weight_class   = weight_class
+        self.weight_mask    = weight_mask
+        self.weight_dice    = weight_dice
+        self.no_object_coef = no_object_coef
+
+        # CE weight tensor: [class_0_w, …, class_{C-1}_w, no_object_w]
+        if class_weights is not None:
+            eos = torch.cat([class_weights,
+                             class_weights.new_tensor([no_object_coef])])
+        else:
+            eos = None
+        # register_buffer so it moves with .to(device) but is not a parameter
+        if eos is not None:
+            self.register_buffer('ce_weight', eos)
+        else:
+            self.ce_weight = None
+
+    # ── Helpers ───────────────────────────────────────────────────────────────
+
+    @torch.no_grad()
+    def _build_gt(self, anno_b: torch.Tensor):
+        """Extract per-class binary masks from a [H, W] annotation map.
+
+        Returns list of (class_idx: int, binary_mask: [H, W] float32).
+        Background (class 0) is included so the no-object class always has
+        at least one segment to compete against.
+        """
+        segments = []
+        for c in range(self.num_classes):
+            mask = (anno_b == c).float()
+            if mask.sum() > 0:
+                segments.append((c, mask))
+        return segments
+
+    @torch.no_grad()
+    def _cost_matrix(self,
+                     cls_logits_q: torch.Tensor,   # [Q, C+1]
+                     pred_masks_q: torch.Tensor,   # [Q, h, w]
+                     gt_classes:   list[int],
+                     gt_masks:     torch.Tensor,   # [M, h, w]
+                     ) -> torch.Tensor:             # [Q, M]
+        Q = cls_logits_q.shape[0]
+        M = len(gt_classes)
+        dev = cls_logits_q.device
+
+        # ── Class cost: −p(gt_class) ──────────────────────────────────────────
+        cls_probs   = F.softmax(cls_logits_q, dim=-1)          # [Q, C+1]
+        gt_idx      = torch.tensor(gt_classes, device=dev)     # [M]
+        class_cost  = -cls_probs[:, gt_idx]                    # [Q, M]
+
+        # ── Mask costs (vectorised Q×M) ───────────────────────────────────────
+        pred_flat = pred_masks_q.flatten(1)       # [Q, HW]
+        pred_sig  = pred_flat.sigmoid()           # [Q, HW]
+        gt_flat   = gt_masks.flatten(1)           # [M, HW]
+        HW        = pred_flat.shape[1]
+
+        # Binary cross-entropy cost
+        p_exp = pred_flat.unsqueeze(1).expand(Q, M, HW)  # [Q, M, HW]
+        g_exp = gt_flat.unsqueeze(0).expand(Q, M, HW)    # [Q, M, HW]
+        bce_cost = F.binary_cross_entropy_with_logits(
+            p_exp, g_exp, reduction='none').mean(-1)      # [Q, M]
+
+        # Dice cost
+        num      = 2 * torch.einsum('qn,mn->qm', pred_sig, gt_flat) # [Q, M]
+        den      = pred_sig.sum(-1, keepdim=True) + gt_flat.sum(-1).unsqueeze(0) + 1e-5
+        dice_cost = 1.0 - num / den                                  # [Q, M]
+
+        return (self.cost_class * class_cost
+                + self.cost_mask  * bce_cost
+                + self.cost_dice  * dice_cost)
+
+    # ── Forward ───────────────────────────────────────────────────────────────
+
+    def forward(self,
+                class_logits: torch.Tensor,   # [B, Q, C+1]
+                pred_masks:   torch.Tensor,   # [B, Q, h, w]
+                anno:         torch.Tensor,   # [B, H, W]  long
+                ) -> torch.Tensor:
+        B, Q, _ = class_logits.shape
+        _, _, h, w = pred_masks.shape
+        dev = class_logits.device
+
+        # Downsample annotation to pixel-decoder resolution for mask matching
+        anno_down = F.interpolate(
+            anno.float().unsqueeze(1), size=(h, w), mode='nearest'
+        ).long().squeeze(1)                          # [B, h, w]
+
+        total_loss = class_logits.new_tensor(0.0)
+        no_obj_idx = torch.tensor([self.num_classes], dtype=torch.long, device=dev)
+
+        for b in range(B):
+            segments = self._build_gt(anno_down[b])
+
+            if not segments:
+                # Degenerate: push all queries to no-object
+                targets = no_obj_idx.expand(Q)
+                total_loss = total_loss + self.no_object_coef * F.cross_entropy(
+                    class_logits[b], targets,
+                    weight=self.ce_weight,
+                )
+                continue
+
+            gt_classes = [s[0] for s in segments]
+            gt_masks   = torch.stack([s[1] for s in segments]).to(dev)  # [M,h,w]
+
+            # ── Hungarian matching ────────────────────────────────────────────
+            cost = self._cost_matrix(
+                class_logits[b], pred_masks[b], gt_classes, gt_masks)
+            row_ind, col_ind = linear_sum_assignment(
+                cost.cpu().detach().numpy())
+
+            matched     = set(row_ind.tolist())
+            batch_loss  = class_logits.new_tensor(0.0)
+
+            # ── Matched-pair loss ─────────────────────────────────────────────
+            for r, c in zip(row_ind, col_ind):
+                tgt = torch.tensor([gt_classes[c]], dtype=torch.long, device=dev)
+
+                # Classification
+                batch_loss = batch_loss + self.weight_class * F.cross_entropy(
+                    class_logits[b, r].unsqueeze(0), tgt,
+                    weight=self.ce_weight,
+                )
+                # Mask – binary cross-entropy
+                batch_loss = batch_loss + self.weight_mask * F.binary_cross_entropy_with_logits(
+                    pred_masks[b, r], gt_masks[c]
+                )
+                # Mask – Dice
+                p_sig = pred_masks[b, r].sigmoid().flatten()
+                g     = gt_masks[c].flatten()
+                dice  = 1.0 - (2*(p_sig*g).sum() + 1e-5) / (p_sig.sum() + g.sum() + 1e-5)
+                batch_loss = batch_loss + self.weight_dice * dice
+
+            # ── Unmatched queries → no-object ─────────────────────────────────
+            unmatched = torch.tensor(
+                [q for q in range(Q) if q not in matched],
+                dtype=torch.long, device=dev)
+            if unmatched.numel() > 0:
+                no_obj_targets = no_obj_idx.expand(unmatched.numel())
+                batch_loss = batch_loss + self.no_object_coef * F.cross_entropy(
+                    class_logits[b][unmatched], no_obj_targets,
+                    weight=self.ce_weight,
+                )
+
+            total_loss = total_loss + batch_loss
+
+        return total_loss / B
+
+
 class MaskFormerFusion(nn.Module):
     """MaskFormer with camera-lidar fusion backbone.
 
@@ -215,7 +394,7 @@ class MaskFormerFusion(nn.Module):
         # ── Transformer Decoder ───────────────────────────────────────────────
         self.transformer_decoder = TransformerDecoder(
             d_model=transformer_d_model,
-            nhead=max(1, transformer_d_model // 64),   # ≥1 head, ~1 head/64ch
+            nhead=8,   # matches MaskFormer paper (Cheng et al., NeurIPS 2021)
             num_layers=6,
             num_queries=num_queries,
             num_classes=num_classes,
@@ -298,18 +477,14 @@ class MaskFormerFusion(nn.Module):
         # 4. Direct pixel classification (FCN-style shortcut)
         direct_seg = self.direct_head(pixel_features)              # [B, C, h, w]
 
-        # 5. Transformer decoder merge.
-        #    Each pixel attends over Q queries weighted by the mask scores,
-        #    then takes a weighted average of the queries' raw class logits.
-        b, _, h, w = pixel_features.shape
-        attn = F.softmax(
-            masks.view(b, self.transformer_decoder.num_queries, -1)  # [B, Q, hw]
-                 .permute(0, 2, 1),                                  # [B, hw, Q]
-            dim=-1
-        )                                                             # [B, hw, Q]
-        class_logits_valid = class_logits[..., :self.num_classes]     # [B, Q, C]
-        query_seg = torch.bmm(attn, class_logits_valid)              # [B, hw, C]
-        query_seg = query_seg.permute(0, 2, 1).view(b, self.num_classes, h, w)
+        # 5. Transformer decoder merge — paper formula:
+        #    segmap[c] = Σ_q  softmax(class_logits)[q,c] · sigmoid(mask)[q]
+        #    (MaskFormer §3.3 — "Each pixel is the sum over queries of the
+        #     class probability times the binary mask probability")
+        b, _, h, w = masks.shape
+        cls_probs = F.softmax(class_logits, dim=-1)[..., :self.num_classes]  # [B, Q, C]
+        mask_probs = torch.sigmoid(masks)                                      # [B, Q, h, w]
+        query_seg = torch.einsum('bqc,bqhw->bchw', cls_probs, mask_probs)    # [B, C, h, w]
 
         # Sum the two paths: direct head provides reliable signal from epoch 0;
         # the query path adds structural, object-level refinement over time.
@@ -319,4 +494,4 @@ class MaskFormerFusion(nn.Module):
         segmap = F.interpolate(segmap, size=(H, W),
                                mode='bilinear', align_corners=False)
 
-        return None, segmap
+        return None, segmap, class_logits, masks

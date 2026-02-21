@@ -347,16 +347,12 @@ class OneFormerFusion(nn.Module):
         # 4. Direct pixel classification (FCN-style shortcut)
         direct_seg = self.direct_head(pixel_features)              # [B, C, h, w]
 
-        # 5. Transformer decoder merge (cross-attention over queries)
-        b, _, h, w = pixel_features.shape
-        attn = F.softmax(
-            masks.view(b, self.transformer_decoder.num_queries, -1)  # [B, Q, hw]
-                 .permute(0, 2, 1),                                  # [B, hw, Q]
-            dim=-1
-        )                                                             # [B, hw, Q]
-        class_logits_valid = class_logits[..., :self.num_classes]     # [B, Q, C]
-        query_seg = torch.bmm(attn, class_logits_valid)              # [B, hw, C]
-        query_seg = query_seg.permute(0, 2, 1).view(b, self.num_classes, h, w)
+        # 5. Transformer decoder merge — MaskFormer paper formula:
+        #    segmap[c] = Σ_q  softmax(class_logits)[q,c] · sigmoid(mask)[q]
+        b, _, h, w = masks.shape
+        cls_probs  = F.softmax(class_logits, dim=-1)[..., :self.num_classes]  # [B, Q, C]
+        mask_probs = torch.sigmoid(masks)                                       # [B, Q, h, w]
+        query_seg  = torch.einsum('bqc,bqhw->bchw', cls_probs, mask_probs)    # [B, C, h, w]
 
         # Sum direct + query paths
         segmap = direct_seg + query_seg
@@ -365,4 +361,4 @@ class OneFormerFusion(nn.Module):
         segmap = F.interpolate(segmap, size=(H, W),
                                mode='bilinear', align_corners=False)
 
-        return None, segmap
+        return None, segmap, class_logits, masks

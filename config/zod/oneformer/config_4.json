@@ -34,7 +34,9 @@
         "clft_lr": 0.0001,
         "lr_momentum": 0.99,
         "pretrained": true,
-        "detectron_cfg": null
+        "detectron_cfg": null,
+        "eos_coef": 0.1,
+        "hungarian_weight": 0.1
     },
     "Dataset": {
         "name": "zod",
@@ -156,59 +158,5 @@
                 0.098311
             ]
         }
-    },
-    "Loss": {
-        "name": "maskformer_loss",
-        "weight_dict": {
-            "loss_ce": 2.0,
-            "loss_mask": 5.0,
-            "loss_dice": 5.0,
-            "loss_ce_0": 2.0,
-            "loss_mask_0": 5.0,
-            "loss_dice_0": 5.0,
-            "loss_ce_1": 2.0,
-            "loss_mask_1": 5.0,
-            "loss_dice_1": 5.0,
-            "loss_ce_2": 2.0,
-            "loss_mask_2": 5.0,
-            "loss_dice_2": 5.0,
-            "loss_ce_3": 2.0,
-            "loss_mask_3": 5.0,
-            "loss_dice_3": 5.0,
-            "loss_ce_4": 2.0,
-            "loss_mask_4": 5.0,
-            "loss_dice_4": 5.0,
-            "loss_ce_5": 2.0,
-            "loss_mask_5": 5.0,
-            "loss_dice_5": 5.0,
-            "loss_ce_6": 2.0,
-            "loss_mask_6": 5.0,
-            "loss_dice_6": 5.0,
-            "loss_ce_7": 2.0,
-            "loss_mask_7": 5.0,
-            "loss_dice_7": 5.0,
-            "loss_ce_8": 2.0,
-            "loss_mask_8": 5.0,
-            "loss_dice_8": 5.0,
-            "loss_ce_9": 2.0,
-            "loss_mask_9": 5.0,
-            "loss_dice_9": 5.0
-        },
-        "eos_coef": 0.1
-    },
-    "Optimizer": {
-        "name": "adamw",
-        "lr": 0.0001,
-        "weight_decay": 0.05,
-        "betas": [
-            0.9,
-            0.999
-        ]
-    },
-    "Scheduler": {
-        "name": "polynomial",
-        "power": 0.9,
-        "warmup_iters": 10,
-        "warmup_ratio": 1e-06
     }
 }

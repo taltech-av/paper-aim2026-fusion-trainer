@@ -10,12 +10,10 @@ import argparse
 import multiprocessing
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import numpy as np
 from torch.utils.data import DataLoader
-from scipy.optimize import linear_sum_assignment
 
-from models.maskformer_fusion import MaskFormerFusion
+from models.maskformer_fusion import MaskFormerFusion, MaskFormerCriterion
 from core.metrics_calculator import MetricsCalculator
 from core.training_engine import TrainingEngine
 from utils.metrics import find_overlap_exclude_bg_ignore
@@ -24,88 +22,82 @@ from integrations.vision_service import create_training, create_config, get_trai
 from utils.helpers import get_model_path, get_training_uuid_from_logs
 
 
-def dice_coeff(pred, target):
-    smooth = 1e-5
-    pred = pred.flatten()
-    target = target.flatten()
-    intersection = (pred * target).sum()
-    return (2 * intersection + smooth) / (pred.sum() + target.sum() + smooth)
 
+class MaskFormerTrainingEngine(TrainingEngine):
+    """TrainingEngine subclass that adds Hungarian matching loss.
 
-def focal_loss_fn(pred, target, alpha=0.25, gamma=2):
-    pred = pred.flatten()
-    target = target.flatten()
-    bce = F.binary_cross_entropy_with_logits(pred, target, reduction='none')
-    pt = torch.exp(-bce)
-    loss = alpha * (1 - pt) ** gamma * bce
-    return loss.mean()
+    On each training step:
+        total_loss = ce_loss(segmap, anno)
+                   + hungarian_weight * hungarian_loss(class_logits, masks, anno)
 
+    Validation still uses ce_loss only (segmap is all we need for IoU eval).
+    """
 
-def maskformer_loss(class_logits, pred_masks, targets, num_classes):
-    # class_logits: [b, num_queries, num_classes+1]
-    # pred_masks: [b, num_queries, h, w]
-    # targets: [b, h, w]
-    total_loss = 0
-    for b in range(class_logits.shape[0]):
-        # Get GT classes and masks
-        gt_classes = []
-        gt_masks = []
-        for c in range(num_classes):
-            mask = (targets[b] == c).float()
-            if mask.sum() > 0:
-                gt_masks.append(mask)
-                gt_classes.append(c)
-        num_gt = len(gt_classes)
-        if num_gt == 0:
-            # Penalize all queries for not being no-object
-            loss = F.cross_entropy(class_logits[b].view(-1, num_classes+1), torch.full((100,), num_classes, dtype=torch.long, device=class_logits.device))
-            total_loss += loss
-            continue
-        
-        class_logits_b = class_logits[b]  # [100, num_classes+1]
-        pred_masks_b = pred_masks[b]  # [100, h, w]
-        gt_masks = torch.stack(gt_masks).to(class_logits.device)  # [num_gt, h, w]
-        
-        # Class cost
-        class_probs = F.softmax(class_logits_b, dim=-1)
-        class_cost = torch.zeros(100, num_gt, device=class_logits.device)
-        for i in range(100):
-            for j in range(num_gt):
-                c = gt_classes[j]
-                class_cost[i, j] = -class_probs[i, c]
-        
-        # Mask cost (dice)
-        mask_cost = torch.zeros(100, num_gt, device=class_logits.device)
-        for i in range(100):
-            for j in range(num_gt):
-                dice = 1 - dice_coeff(pred_masks_b[i], gt_masks[j])
-                mask_cost[i, j] = dice
-        
-        cost = class_cost + mask_cost
-        cost_np = cost.cpu().detach().numpy()
-        row_ind, col_ind = linear_sum_assignment(cost_np)
-        
-        matched_loss = 0
-        for r, c in zip(row_ind, col_ind):
-            # Class loss
-            target_class = gt_classes[c]
-            matched_loss += F.cross_entropy(class_logits_b[r].unsqueeze(0), torch.tensor([target_class], device=class_logits.device))
-            # Mask loss
-            pred = pred_masks_b[r]
-            gt = gt_masks[c]
-            dice_loss = 1 - dice_coeff(pred, gt)
-            focal_loss = focal_loss_fn(pred, gt)
-            matched_loss += dice_loss + focal_loss
-        
-        # Unmatched queries
-        matched_queries = set(row_ind)
-        for i in range(100):
-            if i not in matched_queries:
-                matched_loss += F.cross_entropy(class_logits_b[i].unsqueeze(0), torch.tensor([num_classes], device=class_logits.device))
-        
-        total_loss += matched_loss
-    
-    return total_loss / class_logits.shape[0]
+    def __init__(self, *args,
+                 hungarian_criterion: MaskFormerCriterion,
+                 hungarian_weight: float = 1.0,
+                 **kwargs):
+        super().__init__(*args, **kwargs)
+        self.hungarian_criterion = hungarian_criterion
+        self.hungarian_weight    = hungarian_weight
+
+    def train_epoch(self, dataloader, modality, num_classes):
+        """One training epoch with CE + Hungarian matching loss."""
+        from torch.amp import autocast
+        from utils.helpers import relabel_annotation
+
+        self.model.train()
+        accumulators = self.metrics_calc.create_accumulators(self.device)
+        train_loss = 0.0
+
+        from tqdm import tqdm
+        progress_bar = tqdm(dataloader)
+        for batch in progress_bar:
+            rgb   = batch['rgb'].to(self.device,   non_blocking=True)
+            lidar = batch['lidar'].to(self.device,  non_blocking=True)
+            anno  = batch['anno'].to(self.device,   non_blocking=True)
+
+            self.optimizer.zero_grad()
+
+            rgb_input, lidar_input = self._prepare_inputs(rgb, lidar, modality)
+
+            with autocast('cuda'):
+                model_outputs = self.model(rgb_input, lidar_input, modality)
+                # model returns (None, segmap, class_logits, masks)
+                output_seg    = model_outputs[1].squeeze(1)   # [B,C,H,W]
+                class_logits  = model_outputs[2]               # [B,Q,C+1]
+                pred_masks    = model_outputs[3]               # [B,Q,h,w]
+
+                anno = relabel_annotation(
+                    anno.cpu(), self.config
+                ).squeeze(0).to(self.device)
+
+                ce_loss       = self.criterion(output_seg, anno)
+                hun_loss      = self.hungarian_criterion(
+                    class_logits, pred_masks, anno
+                )
+                loss = ce_loss + self.hungarian_weight * hun_loss
+
+            self.metrics_calc.update_accumulators(
+                accumulators, output_seg, anno, num_classes
+            )
+            train_loss += loss.item()
+
+            self.scaler.scale(loss).backward()
+            # Unscale before clipping so the threshold is in true gradient units
+            self.scaler.unscale_(self.optimizer)
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
+
+            progress_bar.set_description(
+                f'Train loss: {loss:.4f}  (ce={ce_loss:.3f}, hun={hun_loss:.3f})'
+            )
+
+        metrics = self.metrics_calc.compute_epoch_metrics(
+            accumulators, train_loss, len(dataloader)
+        )
+        return metrics
 
 
 def calculate_num_classes(config):
@@ -341,8 +333,20 @@ def main():
         persistent_workers=True
     )
     
+    # Setup Hungarian criterion
+    train_classes  = config['Dataset']['train_classes']
+    sorted_classes = sorted(train_classes, key=lambda x: x['index'])
+    class_weights  = [cls['weight'] for cls in sorted_classes]
+    eos_coef       = config['MaskFormer'].get('eos_coef', 0.1)
+    hungarian_criterion = MaskFormerCriterion(
+        num_classes=num_classes,
+        no_object_coef=eos_coef,
+        class_weights=torch.tensor(class_weights, dtype=torch.float32),
+    ).to(device)
+    hungarian_weight = config['MaskFormer'].get('hungarian_weight', 1.0)
+
     # Setup training engine
-    training_engine = TrainingEngine(
+    training_engine = MaskFormerTrainingEngine(
         model=model,
         optimizer=optimizer,
         criterion=criterion,
@@ -351,7 +355,9 @@ def main():
         training_uuid=training_uuid,
         log_dir=config['Log']['logdir'],
         device=device,
-        vision_training_id=vision_training_id
+        vision_training_id=vision_training_id,
+        hungarian_criterion=hungarian_criterion,
+        hungarian_weight=hungarian_weight,
     )
     
     # Train

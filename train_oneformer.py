@@ -14,8 +14,10 @@ import numpy as np
 from torch.utils.data import DataLoader
 
 from models.oneformer_fusion import OneFormerFusion
+from models.maskformer_fusion import MaskFormerCriterion
 from core.metrics_calculator import MetricsCalculator
 from core.training_engine import TrainingEngine
+from train_maskformer import MaskFormerTrainingEngine
 from utils.metrics import find_overlap_exclude_bg_ignore
 from integrations.training_logger import generate_training_uuid
 from integrations.vision_service import create_training, create_config, get_training_by_uuid
@@ -256,8 +258,20 @@ def main():
         persistent_workers=True
     )
 
+    # Setup Hungarian criterion
+    train_classes  = config['Dataset']['train_classes']
+    sorted_classes = sorted(train_classes, key=lambda x: x['index'])
+    class_weights  = [cls['weight'] for cls in sorted_classes]
+    eos_coef       = config['OneFormer'].get('eos_coef', 0.1)
+    hungarian_criterion = MaskFormerCriterion(
+        num_classes=num_classes,
+        no_object_coef=eos_coef,
+        class_weights=torch.tensor(class_weights, dtype=torch.float32),
+    ).to(device)
+    hungarian_weight = config['OneFormer'].get('hungarian_weight', 1.0)
+
     # Setup training engine
-    training_engine = TrainingEngine(
+    training_engine = MaskFormerTrainingEngine(
         model=model,
         optimizer=optimizer,
         criterion=criterion,
@@ -266,7 +280,9 @@ def main():
         training_uuid=training_uuid,
         log_dir=config['Log']['logdir'],
         device=device,
-        vision_training_id=vision_training_id
+        vision_training_id=vision_training_id,
+        hungarian_criterion=hungarian_criterion,
+        hungarian_weight=hungarian_weight,
     )
 
     # Train
