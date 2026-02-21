@@ -260,7 +260,9 @@ def get_model_config_key(config):
     elif backbone == 'swin_fusion':
         return 'SwinFusion'
     elif backbone == 'maskformer':
-        return 'MaskFormer'
+        return 'MaskFormer'   
+    elif backbone == 'oneformer':
+        return 'OneFormer'
     else:
         return 'CLFT'  # default
 

@@ -1,9 +1,9 @@
 {
-    "Summary": "Iseauto MaskFormer-Large RGB",
+    "Summary": "Iseauto MaskFormer-Base RGB",
     "tags": [
         "Iseauto",
         "MaskFormer",
-        "Large",
+        "Base",
         "RGB"
     ],
     "CLI": {
@@ -24,10 +24,10 @@
         "model_path": ""
     },
     "Log": {
-        "logdir": "logs/iseauto/maskformer/config_7"
+        "logdir": "logs/iseauto/maskformer/config_4"
     },
     "MaskFormer": {
-        "model_timm": "swinv2_large_window12to24_192to384_22kft1k",
+        "model_timm": "swinv2_base_window12to24_192to384_22kft1k",
         "pixel_decoder_channels": 256,
         "transformer_d_model": 256,
         "num_queries": 100,

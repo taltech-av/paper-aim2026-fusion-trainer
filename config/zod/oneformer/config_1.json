@@ -1,15 +1,15 @@
 {
-    "Summary": "Iseauto MaskFormer-Large RGB",
+    "Summary": "ZOD OneFormer-Tiny RGB",
     "tags": [
-        "Iseauto",
-        "MaskFormer",
-        "Large",
+        "ZOD",
+        "OneFormer",
+        "Tiny",
         "RGB"
     ],
     "CLI": {
-        "backbone": "maskformer",
+        "backbone": "oneformer",
         "mode": "rgb",
-        "path": "./xod_dataset/"
+        "path": "zod_dataset/"
     },
     "General": {
         "device": "cuda:0",
@@ -24,27 +24,55 @@
         "model_path": ""
     },
     "Log": {
-        "logdir": "logs/iseauto/maskformer/config_7"
-    },
-    "MaskFormer": {
-        "model_timm": "swinv2_large_window12to24_192to384_22kft1k",
-        "pixel_decoder_channels": 256,
-        "transformer_d_model": 256,
-        "num_queries": 100,
-        "clft_lr": 0.0001,
-        "lr_momentum": 0.99,
-        "pretrained": true
+        "logdir": "logs/zod/oneformer/config_1"
     },
     "Dataset": {
-        "name": "iseauto",
-        "dataset_root": "./xod_dataset",
-        "annotation_path": "annotation",
-        "train_split": "./xod_dataset/train.txt",
-        "val_split": "./xod_dataset/validation.txt",
+        "name": "zod",
+        "dataset_root": "zod_dataset/",
+        "annotation_path": "annotation_camera_only",
+        "train_split": "zod_dataset/train.txt",
+        "val_split": "zod_dataset/validation.txt",
         "splits": {
             "split_train": 0.6,
             "split_val": 0.2,
             "split_test": 0.2
+        },
+        "transforms": {
+            "resize": 256,
+            "random_rotate_range": 20,
+            "p_flip": 0.5,
+            "p_crop": 0.3,
+            "p_rot": 0.4,
+            "image_mean": [
+                0.325291,
+                0.325736,
+                0.331795
+            ],
+            "image_std": [
+                0.168061,
+                0.179542,
+                0.204609
+            ],
+            "lidar_mean": [
+                0.049261,
+                0.049575,
+                0.092697
+            ],
+            "lidar_std": [
+                0.07696,
+                0.073541,
+                0.098311
+            ],
+            "lidar_mean_waymo": [
+                -0.17263354,
+                0.85321806,
+                24.5527253
+            ],
+            "lidar_std_waymo": [
+                7.34546552,
+                1.17227659,
+                15.83745082
+            ]
         },
         "dataset_classes": [
             {
@@ -52,21 +80,34 @@
                 "index": 0
             },
             {
-                "name": "vehicle",
+                "name": "ignore",
                 "index": 1
             },
             {
-                "name": "human",
+                "name": "vehicle",
                 "index": 2
+            },
+            {
+                "name": "sign",
+                "index": 3
+            },
+            {
+                "name": "cyclist",
+                "index": 4
+            },
+            {
+                "name": "pedestrian",
+                "index": 5
             }
         ],
         "train_classes": [
             {
                 "name": "background",
                 "index": 0,
-                "weight": 0.5,
+                "weight": 0.1,
                 "dataset_mapping": [
-                    0
+                    0,
+                    1
                 ],
                 "color": [
                     0,
@@ -77,9 +118,9 @@
             {
                 "name": "vehicle",
                 "index": 1,
-                "weight": 4.0,
+                "weight": 10.0,
                 "dataset_mapping": [
-                    1
+                    2
                 ],
                 "color": [
                     128,
@@ -88,11 +129,25 @@
                 ]
             },
             {
-                "name": "human",
+                "name": "sign",
                 "index": 2,
-                "weight": 12.0,
+                "weight": 15.0,
                 "dataset_mapping": [
-                    2
+                    3
+                ],
+                "color": [
+                    255,
+                    0,
+                    0
+                ]
+            },
+            {
+                "name": "human",
+                "index": 3,
+                "weight": 20.0,
+                "dataset_mapping": [
+                    4,
+                    5
                 ],
                 "color": [
                     0,
@@ -100,34 +155,7 @@
                     255
                 ]
             }
-        ],
-        "transforms": {
-            "resize": 384,
-            "random_rotate_range": 20,
-            "p_flip": 0.5,
-            "p_crop": 0.3,
-            "p_rot": 0.4,
-            "image_mean": [
-                0.485,
-                0.456,
-                0.406
-            ],
-            "image_std": [
-                0.229,
-                0.224,
-                0.225
-            ],
-            "lidar_mean": [
-                0.812386,
-                0.148879,
-                0.032874
-            ],
-            "lidar_std": [
-                0.194681,
-                0.285717,
-                0.153287
-            ]
-        }
+        ]
     },
     "Loss": {
         "name": "maskformer_loss",
@@ -182,5 +210,15 @@
         "power": 0.9,
         "warmup_iters": 10,
         "warmup_ratio": 1e-06
+    },
+    "OneFormer": {
+        "model_timm": "swinv2_tiny_window8_256",
+        "pixel_decoder_channels": 256,
+        "transformer_d_model": 256,
+        "num_queries": 100,
+        "clft_lr": 0.0001,
+        "lr_momentum": 0.99,
+        "pretrained": true,
+        "detectron_cfg": null
     }
 }

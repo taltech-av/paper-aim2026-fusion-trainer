@@ -31,6 +31,8 @@ zod_dataset/annotation_camera_only
 zod_dataset/annotation_fusion
 waymo_dataset/labeled
 venv
+venv311
+venv312
 paper
 paper2
 paper_sam

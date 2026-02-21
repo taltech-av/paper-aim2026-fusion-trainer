@@ -1,14 +1,14 @@
 {
-    "Summary": "Iseauto MaskFormer-Large RGB",
+    "Summary": "Iseauto MaskFormer-Small Fusion",
     "tags": [
         "Iseauto",
         "MaskFormer",
-        "Large",
-        "RGB"
+        "Small",
+        "Fusion"
     ],
     "CLI": {
         "backbone": "maskformer",
-        "mode": "rgb",
+        "mode": "fusion",
         "path": "./xod_dataset/"
     },
     "General": {
@@ -24,10 +24,10 @@
         "model_path": ""
     },
     "Log": {
-        "logdir": "logs/iseauto/maskformer/config_7"
+        "logdir": "logs/iseauto/maskformer/config_3"
     },
     "MaskFormer": {
-        "model_timm": "swinv2_large_window12to24_192to384_22kft1k",
+        "model_timm": "swinv2_small_window16_256",
         "pixel_decoder_channels": 256,
         "transformer_d_model": 256,
         "num_queries": 100,
@@ -102,7 +102,7 @@
             }
         ],
         "transforms": {
-            "resize": 384,
+            "resize": 256,
             "random_rotate_range": 20,
             "p_flip": 0.5,
             "p_crop": 0.3,

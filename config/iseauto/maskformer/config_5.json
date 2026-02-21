@@ -1,14 +1,14 @@
 {
-    "Summary": "Iseauto MaskFormer-Large RGB",
+    "Summary": "Iseauto MaskFormer-Base LiDAR",
     "tags": [
         "Iseauto",
         "MaskFormer",
-        "Large",
-        "RGB"
+        "Base",
+        "LiDAR"
     ],
     "CLI": {
         "backbone": "maskformer",
-        "mode": "rgb",
+        "mode": "lidar",
         "path": "./xod_dataset/"
     },
     "General": {
@@ -24,10 +24,10 @@
         "model_path": ""
     },
     "Log": {
-        "logdir": "logs/iseauto/maskformer/config_7"
+        "logdir": "logs/iseauto/maskformer/config_5"
     },
     "MaskFormer": {
-        "model_timm": "swinv2_large_window12to24_192to384_22kft1k",
+        "model_timm": "swinv2_base_window12to24_192to384_22kft1k",
         "pixel_decoder_channels": 256,
         "transformer_d_model": 256,
         "num_queries": 100,
