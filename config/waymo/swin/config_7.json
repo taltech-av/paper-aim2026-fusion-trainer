@@ -1,7 +1,16 @@
 {
-    "Summary": "Waymo CLFTv2-Tiny Cross-Fusion",
-    "tags": ["Waymo", "CLFTv2-SwinV2-Tiny", "CrossFusion"],
-    "CLI": {"backbone": "swin_fusion", "mode": "cross_fusion", "path": "./waymo_dataset/splits_clft/"},
+    "Summary": "Waymo CLFTv2-Large RGB",
+    "tags": [
+        "Waymo",
+        "SwinFusion",
+        "Large",
+        "RGB"
+    ],
+    "CLI": {
+        "backbone": "swin_fusion",
+        "mode": "rgb",
+        "path": "./waymo_dataset/splits_clft/"
+    },
     "General": {
         "device": "cuda:0",
         "epochs": 100,
@@ -14,15 +23,32 @@
         "max_epochs": 2,
         "model_path": ""
     },
-    "Log": {"logdir": "logs/waymo/swin/config_7"},
+    "Log": {
+        "logdir": "logs/waymo/swin/config_7"
+    },
     "SwinFusion": {
-        "emb_dims": [96, 192, 384, 768],
-        "hooks": [0, 1, 2, 3],
-        "model_timm": "swinv2_tiny_window8_256",
+        "emb_dims": [
+            128,
+            256,
+            512,
+            1024
+        ],
+        "hooks": [
+            0,
+            1,
+            2,
+            3
+        ],
+        "model_timm": "swinv2_large_window12to24_192to384_22kft1k",
         "fusion_strategy": "residual_average",
         "clft_lr": 8e-05,
         "patch_size": 4,
-        "reassembles": [4, 8, 16, 32],
+        "reassembles": [
+            4,
+            8,
+            16,
+            32
+        ],
         "read": "ignore",
         "resample_dim": 256,
         "type": "segmentation",
@@ -34,33 +60,129 @@
         "dataset_root": "./waymo_dataset",
         "train_split": "./waymo_dataset/splits_clft/train_all.txt",
         "val_split": "./waymo_dataset/splits_clft/early_stop_valid.txt",
-        "splits": {"split_train": 0.6, "split_val": 0.2, "split_test": 0.2},
+        "splits": {
+            "split_train": 0.6,
+            "split_val": 0.2,
+            "split_test": 0.2
+        },
         "transforms": {
             "resize": 256,
             "random_rotate_range": 20,
             "p_flip": 0.5,
             "p_crop": 0.3,
             "p_rot": 0.4,
-            "image_mean": [0.485, 0.456, 0.406],
-            "image_std": [0.229, 0.224, 0.225],
-            "lidar_mean": [-0.17263354, 0.85321806, 24.5527253],
-            "lidar_std": [7.34546552, 1.17227659, 15.83745082],
-            "lidar_mean_waymo": [-0.17263354, 0.85321806, 24.5527253],
-            "lidar_std_waymo": [7.34546552, 1.17227659, 15.83745082]
+            "image_mean": [
+                0.485,
+                0.456,
+                0.406
+            ],
+            "image_std": [
+                0.229,
+                0.224,
+                0.225
+            ],
+            "lidar_mean": [
+                -0.17263354,
+                0.85321806,
+                24.5527253
+            ],
+            "lidar_std": [
+                7.34546552,
+                1.17227659,
+                15.83745082
+            ],
+            "lidar_mean_waymo": [
+                -0.17263354,
+                0.85321806,
+                24.5527253
+            ],
+            "lidar_std_waymo": [
+                7.34546552,
+                1.17227659,
+                15.83745082
+            ]
         },
         "dataset_classes": [
-            {"name": "ignore", "index": 0},
-            {"name": "vehicle", "index": 1},
-            {"name": "pedestrian", "index": 2},
-            {"name": "sign", "index": 3},
-            {"name": "cyclist", "index": 4},
-            {"name": "background", "index": 5}
+            {
+                "name": "ignore",
+                "index": 0
+            },
+            {
+                "name": "vehicle",
+                "index": 1
+            },
+            {
+                "name": "pedestrian",
+                "index": 2
+            },
+            {
+                "name": "sign",
+                "index": 3
+            },
+            {
+                "name": "cyclist",
+                "index": 4
+            },
+            {
+                "name": "background",
+                "index": 5
+            }
         ],
         "train_classes": [
-            {"name": "background", "index": 0, "weight": 0.5, "dataset_mapping": [0, 5], "color": [0, 0, 0]},
-            {"name": "vehicle", "index": 1, "weight": 4.0, "dataset_mapping": [1], "color": [128, 0, 128]},
-            {"name": "sign", "index": 2, "weight": 10.0, "dataset_mapping": [3], "color": [255, 0, 0]},
-            {"name": "human", "index": 3, "weight": 4.0, "dataset_mapping": [2, 4], "color": [0, 255, 255]}
+            {
+                "name": "background",
+                "index": 0,
+                "weight": 0.5,
+                "dataset_mapping": [
+                    0,
+                    5
+                ],
+                "color": [
+                    0,
+                    0,
+                    0
+                ]
+            },
+            {
+                "name": "vehicle",
+                "index": 1,
+                "weight": 4.0,
+                "dataset_mapping": [
+                    1
+                ],
+                "color": [
+                    128,
+                    0,
+                    128
+                ]
+            },
+            {
+                "name": "sign",
+                "index": 2,
+                "weight": 10.0,
+                "dataset_mapping": [
+                    3
+                ],
+                "color": [
+                    255,
+                    0,
+                    0
+                ]
+            },
+            {
+                "name": "human",
+                "index": 3,
+                "weight": 4.0,
+                "dataset_mapping": [
+                    2,
+                    4
+                ],
+                "color": [
+                    0,
+                    255,
+                    255
+                ]
+            }
         ]
     }
 }
