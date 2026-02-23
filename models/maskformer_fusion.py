@@ -117,6 +117,15 @@ class TransformerDecoder(nn.Module):
         # Learnable object queries
         self.query_embed = nn.Embedding(num_queries, d_model)
 
+        # Learned 2-D positional encoding for the pixel-feature memory.
+        # Without this the cross-attention has no spatial signal and queries
+        # cannot learn WHERE to attend, so masks stay unlocalized.
+        # Sized for the coarsest expected feature map (backbone/4 = 64 for
+        # a 256-input swin), but dynamically interpolated at forward time.
+        self.pos_embed = nn.Parameter(
+            torch.zeros(1, d_model, 64, 64))
+        nn.init.trunc_normal_(self.pos_embed, std=0.02)
+
         # Standard PyTorch transformer decoder
         decoder_layer = nn.TransformerDecoderLayer(
             d_model=d_model, nhead=nhead,
@@ -140,14 +149,18 @@ class TransformerDecoder(nn.Module):
             masks        : [B, num_queries, H, W]   (raw logits, not sigmoid)
         """
         b, c, h, w = pixel_features.shape
-        # Flatten spatial dims for cross-attention memory
-        memory = pixel_features.flatten(2).permute(0, 2, 1)  # [B, H*W, C]
+
+        # Add 2-D positional encoding (interpolated to actual feature map size)
+        pos = F.interpolate(self.pos_embed, size=(h, w),
+                            mode='bilinear', align_corners=False)  # [1, C, h, w]
+        memory_with_pos = (pixel_features + pos).flatten(2).permute(0, 2, 1)  # [B, H*W, C]
 
         # Broadcast queries over the batch
         queries = self.query_embed.weight.unsqueeze(0).expand(b, -1, -1)  # [B, Q, C]
 
-        # Cross-attend queries to pixel memory
-        decoded = self.decoder(queries, memory)  # [B, Q, C]
+        # Cross-attend queries to positionally-encoded pixel memory.
+        # memory_with_pos carries spatial info so queries can learn WHERE to attend.
+        decoded = self.decoder(queries, memory_with_pos)  # [B, Q, C]
 
         # Per-query class distribution
         class_logits = self.class_embed(decoded)  # [B, Q, num_classes+1]
@@ -197,16 +210,20 @@ class MaskFormerCriterion(nn.Module):
         self.no_object_coef = no_object_coef
 
         # CE weight tensor: [class_0_w, …, class_{C-1}_w, no_object_w]
+        # Original MaskFormer (Cheng et al., NeurIPS 2021) applies eos_coef as
+        # the weight of the no-object class in a single weight vector used for
+        # ALL queries — this is different from multiplying the entire loss by the
+        # scalar.  Always build this vector so the paper's semantics are matched
+        # even when no per-class weights are supplied.
         if class_weights is not None:
             eos = torch.cat([class_weights,
                              class_weights.new_tensor([no_object_coef])])
         else:
-            eos = None
+            # Foreground classes all weight 1; no-object class weighted by eos_coef
+            eos = torch.ones(num_classes + 1)
+            eos[-1] = no_object_coef
         # register_buffer so it moves with .to(device) but is not a parameter
-        if eos is not None:
-            self.register_buffer('ce_weight', eos)
-        else:
-            self.ce_weight = None
+        self.register_buffer('ce_weight', eos)
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -215,11 +232,15 @@ class MaskFormerCriterion(nn.Module):
         """Extract per-class binary masks from a [H, W] annotation map.
 
         Returns list of (class_idx: int, binary_mask: [H, W] float32).
-        Background (class 0) is included so the no-object class always has
-        at least one segment to compete against.
+        Background (class 0) is intentionally EXCLUDED so no query is ever
+        trained to predict background.  Background emerges implicitly as the
+        complement of all foreground masks.  Including it causes the model to
+        collapse: a background query gets a mask covering ~80% of pixels and
+        its large spatial support dominates the segmap sum, driving all
+        foreground predictions to near-zero.
         """
         segments = []
-        for c in range(self.num_classes):
+        for c in range(1, self.num_classes):   # skip class 0 (background)
             mask = (anno_b == c).float()
             if mask.sum() > 0:
                 segments.append((c, mask))
@@ -285,9 +306,10 @@ class MaskFormerCriterion(nn.Module):
             segments = self._build_gt(anno_down[b])
 
             if not segments:
-                # Degenerate: push all queries to no-object
+                # Degenerate: push all queries to no-object.
+                # ce_weight[-1] already carries eos_coef so no extra scalar.
                 targets = no_obj_idx.expand(Q)
-                total_loss = total_loss + self.no_object_coef * F.cross_entropy(
+                total_loss = total_loss + F.cross_entropy(
                     class_logits[b], targets,
                     weight=self.ce_weight,
                 )
@@ -324,20 +346,24 @@ class MaskFormerCriterion(nn.Module):
                 dice  = 1.0 - (2*(p_sig*g).sum() + 1e-5) / (p_sig.sum() + g.sum() + 1e-5)
                 batch_loss = batch_loss + self.weight_dice * dice
 
-            # ── Unmatched queries → no-object + zero-mask ─────────────────────
+            # ── Unmatched queries → no-object classification only ─────────────
+            # Original MaskFormer (Cheng et al., NeurIPS 2021): unmatched queries
+            # only receive the no-object CE loss weighted by eos_coef.  No mask
+            # loss is applied to unmatched queries.  Adding a "push masks to zero"
+            # BCE term here caused training collapse because ~97/100 queries are
+            # unmatched — the gradient pressure overwhelmed the 3 matched queries
+            # and drove sigmoid(mask) → 0 for nearly all queries, making the
+            # segmap sum ≈ 0 after ~50–100 epochs.
             unmatched = torch.tensor(
                 [q for q in range(Q) if q not in matched],
                 dtype=torch.long, device=dev)
             if unmatched.numel() > 0:
                 no_obj_targets = no_obj_idx.expand(unmatched.numel())
-                batch_loss = batch_loss + self.no_object_coef * F.cross_entropy(
+                # ce_weight[-1] = eos_coef already down-weights the no-object
+                # class; no additional scalar multiplier needed.
+                batch_loss = batch_loss + F.cross_entropy(
                     class_logits[b][unmatched], no_obj_targets,
                     weight=self.ce_weight,
-                )
-                # Push unmatched masks toward zero so they don't pollute the segmap
-                zero_target = torch.zeros_like(pred_masks[b][unmatched])
-                batch_loss = batch_loss + self.no_object_coef * F.binary_cross_entropy_with_logits(
-                    pred_masks[b][unmatched], zero_target
                 )
 
             total_loss = total_loss + batch_loss
@@ -470,12 +496,26 @@ class MaskFormerFusion(nn.Module):
         # class_logits : [B, Q, num_classes+1]
         # masks        : [B, Q, h, w]  (raw dot-product logits)
 
-        # 4. Merge — paper formula (MaskFormer §3.3):
-        #    segmap[c] = Σ_q  softmax(class_logits)[q,c] · sigmoid(mask)[q]
+        # 4. Merge — MaskFormer §3.3, gated by per-query foreground probability.
+        #
+        #   Standard formula: segmap[c] = Σ_q softmax(cls)[q,c] · sigmoid(mask)[q]
+        #
+        #   Problem with naive slicing [:num_classes]: even a no-object query
+        #   (softmax mass on the eos token) still contributes 1/C to every class
+        #   after the slice.  With 100 queries and ~3 foreground GT segments, the
+        #   ~97 no-object queries collectively swamp the 3 foreground queries.
+        #
+        #   Fix: weight each query's contribution by its foreground probability
+        #     fg_prob_q = 1 - P(no-object | q)
+        #   so no-object queries contribute nearly zero, foreground queries
+        #   contribute nearly their full class probability × mask.
         b, _, h, w = masks.shape
-        cls_probs  = F.softmax(class_logits, dim=-1)[..., :self.num_classes]  # [B, Q, C]
-        mask_probs = torch.sigmoid(masks)                                       # [B, Q, h, w]
-        segmap     = torch.einsum('bqc,bqhw->bchw', cls_probs, mask_probs)    # [B, C, h, w]
+        cls_probs_full = F.softmax(class_logits, dim=-1)           # [B, Q, C+1]
+        fg_prob        = 1.0 - cls_probs_full[..., -1:]            # [B, Q, 1]
+        cls_probs      = cls_probs_full[..., :self.num_classes] * fg_prob  # [B, Q, C]
+        mask_probs     = torch.sigmoid(masks)                       # [B, Q, h, w]
+        segmap         = torch.einsum('bqc,bqhw->bchw',
+                                      cls_probs, mask_probs)        # [B, C, h, w]
 
         # 5. Upsample to original input resolution
         segmap = F.interpolate(segmap, size=(H, W),

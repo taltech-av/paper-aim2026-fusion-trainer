@@ -200,7 +200,10 @@ class TrainingEngine:
             # Save checkpoints
             self._handle_checkpoints(epoch, val_metrics, epoch_uuid)
             
-            # Check early stopping
+            # Check early stopping — based on val mIoU (higher=better; negate for min-tracking)
+            early_stop_index = -round(val_metrics['mean_iou'], 4)
+            self.early_stopping(early_stop_index, epoch, self.model, self.optimizer, epoch_uuid)
+
             if self.early_stopping.early_stop_trigger:
                 break
         
@@ -254,7 +257,4 @@ class TrainingEngine:
         
         # Manage checkpoints: keep only top max_checkpoints by validation mIoU
         manage_checkpoints_by_miou(self.config, self.log_dir)
-        
-        # Early stopping logic (unchanged)
-        early_stop_index = round(val_metrics['epoch_loss'], 4)
-        self.early_stopping(early_stop_index, epoch, self.model, self.optimizer, epoch_uuid)
+        # Early stopping is handled in train_full

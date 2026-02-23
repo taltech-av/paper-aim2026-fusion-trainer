@@ -32,10 +32,16 @@
         "transformer_d_model": 256,
         "num_queries": 100,
         "clft_lr": 0.0001,
-        "lr_momentum": 0.99,
         "pretrained": true,
         "eos_coef": 0.1,
-        "hungarian_weight": 0.1
+        "warmup_epochs": 10,
+        "lr_scheduler": "poly",
+        "lr_poly_power": 0.9,
+        "lr_step_milestones": [
+            0.75,
+            0.9
+        ],
+        "lr_step_gamma": 0.1
     },
     "Dataset": {
         "name": "waymo",

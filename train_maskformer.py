@@ -274,10 +274,18 @@ def main():
     )
     model.to(device)
     
-    # Setup optimizer
+    # Setup optimizer — differential LR: pretrained backbone at 10x lower rate
+    # so it is fine-tuned gently, while the pixel-decoder / transformer-decoder /
+    # heads start from random init and need a higher LR to converge.
+    backbone_params = list(model.backbone.parameters())
+    backbone_param_ids = {id(p) for p in backbone_params}
+    other_params = [p for p in model.parameters() if id(p) not in backbone_param_ids]
+    base_lr = config['MaskFormer']['clft_lr']
     optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=config['MaskFormer']['clft_lr'],
+        [
+            {'params': backbone_params, 'lr': base_lr * 0.1},
+            {'params': other_params,    'lr': base_lr},
+        ],
         weight_decay=0.05,
     )
     
@@ -326,9 +334,9 @@ def main():
     valid_dataloader = DataLoader(
         valid_data,
         batch_size=config['General']['batch_size'],
-        shuffle=True,
+        shuffle=False,      # deterministic — noisy batch selection masks model quality
         pin_memory=True,
-        drop_last=True,
+        drop_last=False,    # evaluate every validation sample
         num_workers=8,
         persistent_workers=True
     )
@@ -339,14 +347,44 @@ def main():
         num_classes=num_classes,
         no_object_coef=eos_coef,
     ).to(device)
-    warmup_epochs = config['MaskFormer'].get('warmup_epochs', 10)
-    total_epochs  = config['General']['epochs']
-    warmup_sched  = torch.optim.lr_scheduler.LinearLR(
-        optimizer, start_factor=0.01, end_factor=1.0, total_iters=warmup_epochs
+
+    # Prevent legacy momentum-based decay from overriding the scheduler.
+    # (Some older configs carry lr_momentum; train_full's adjust_learning_rate
+    # is a no-op when lr_momentum is absent.)
+    config['MaskFormer'].pop('lr_momentum', None)
+
+    warmup_epochs  = config['MaskFormer'].get('warmup_epochs', 10)
+    total_epochs   = config['General']['epochs']
+    post_warmup    = max(1, total_epochs - warmup_epochs)
+    lr_sched_type  = config['MaskFormer'].get('lr_scheduler', 'poly')
+
+    # Linear warm-up shared by both schedule types.
+    # Matches the original MaskFormer Swin config (WARMUP_FACTOR: 1e-6).
+    warmup_sched = torch.optim.lr_scheduler.LinearLR(
+        optimizer, start_factor=1e-6, end_factor=1.0, total_iters=warmup_epochs
     )
-    main_sched = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, T_max=max(1, total_epochs - warmup_epochs)
-    )
+
+    if lr_sched_type == 'step':
+        # MultiStepLR (×gamma at each milestone epoch).
+        # Milestones expressed as fractions [0,1) of post-warmup epochs so
+        # they scale automatically with different epoch budgets.
+        # Default fractions match the original Detectron2 COCO-stuff config:
+        #   STEPS=(119600, 144400) / MAX_ITER=160000 ≈ 0.75, 0.90 of total,
+        #   offset by warmup → 0.75 and 0.90 of post-warmup epochs.
+        step_fractions = config['MaskFormer'].get('lr_step_milestones', [0.75, 0.90])
+        step_gamma     = config['MaskFormer'].get('lr_step_gamma', 0.1)
+        milestones     = [max(1, int(f * post_warmup)) for f in step_fractions]
+        print(f"LR schedule: MultiStepLR  milestones={milestones} (post-warmup epochs)  gamma={step_gamma}")
+        main_sched = torch.optim.lr_scheduler.MultiStepLR(
+            optimizer, milestones=milestones, gamma=step_gamma
+        )
+    else:  # 'poly' — default, matches original WarmupPolyLR from Detectron2
+        poly_power = config['MaskFormer'].get('lr_poly_power', 0.9)
+        print(f"LR schedule: PolynomialLR  power={poly_power}  T={post_warmup} post-warmup epochs")
+        main_sched = torch.optim.lr_scheduler.PolynomialLR(
+            optimizer, total_iters=post_warmup, power=poly_power
+        )
+
     scheduler = torch.optim.lr_scheduler.SequentialLR(
         optimizer, schedulers=[warmup_sched, main_sched], milestones=[warmup_epochs]
     )
