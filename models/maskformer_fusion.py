@@ -324,7 +324,7 @@ class MaskFormerCriterion(nn.Module):
                 dice  = 1.0 - (2*(p_sig*g).sum() + 1e-5) / (p_sig.sum() + g.sum() + 1e-5)
                 batch_loss = batch_loss + self.weight_dice * dice
 
-            # ── Unmatched queries → no-object ─────────────────────────────────
+            # ── Unmatched queries → no-object + zero-mask ─────────────────────
             unmatched = torch.tensor(
                 [q for q in range(Q) if q not in matched],
                 dtype=torch.long, device=dev)
@@ -333,6 +333,11 @@ class MaskFormerCriterion(nn.Module):
                 batch_loss = batch_loss + self.no_object_coef * F.cross_entropy(
                     class_logits[b][unmatched], no_obj_targets,
                     weight=self.ce_weight,
+                )
+                # Push unmatched masks toward zero so they don't pollute the segmap
+                zero_target = torch.zeros_like(pred_masks[b][unmatched])
+                batch_loss = batch_loss + self.no_object_coef * F.binary_cross_entropy_with_logits(
+                    pred_masks[b][unmatched], zero_target
                 )
 
             total_loss = total_loss + batch_loss
