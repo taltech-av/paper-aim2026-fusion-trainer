@@ -33,7 +33,7 @@
         "num_queries": 100,
         "clft_lr": 0.0001,
         "pretrained": true,
-        "eos_coef": 0.3,
+        "eos_coef": 0.1,
         "warmup_epochs": 10,
         "lr_scheduler": "poly",
         "lr_poly_power": 0.9,
