@@ -230,7 +230,7 @@ def test_model_on_weather(config, model, device, weather_condition, checkpoint_p
 
             # Forward pass
             rgb_input, lidar_input = _prepare_inputs_for_mode(images, lidar, config['CLI']['mode'])
-            _, outputs = model(rgb_input, lidar_input, config['CLI']['mode'])
+            _, outputs, _, _ = model(rgb_input, lidar_input, config['CLI']['mode'])
 
             # Get predictions
             preds = torch.argmax(outputs, dim=1)

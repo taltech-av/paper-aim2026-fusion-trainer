@@ -100,7 +100,7 @@ def process_images(model, data_loader, visualizer, image_paths, dataroot,
         # Forward pass
         with torch.no_grad():
             try:
-                _, pred_logits = model(rgb_input, lidar_input, modality)
+                _, pred_logits, _, _ = model(rgb_input, lidar_input, modality)
                 pred_segmentation = torch.argmax(pred_logits, dim=1).squeeze(0).cpu().numpy()
             except Exception as e:
                 print(f"Error during inference for {rgb_name}: {e}")
