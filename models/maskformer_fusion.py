@@ -126,11 +126,15 @@ class TransformerDecoder(nn.Module):
             torch.zeros(1, d_model, 64, 64))
         nn.init.trunc_normal_(self.pos_embed, std=0.02)
 
-        # Standard PyTorch transformer decoder
+        # Standard PyTorch transformer decoder.
+        # dropout=0.0 matches Mask2Former practice and eliminates the train/eval
+        # behavioural gap: with dropout>0 the model trains under stochastic mask
+        # suppression but is evaluated deterministically, which consistently
+        # inflates background query contributions at inference and collapses mIoU.
         decoder_layer = nn.TransformerDecoderLayer(
             d_model=d_model, nhead=nhead,
             dim_feedforward=d_model * 4,
-            dropout=0.1, batch_first=True
+            dropout=0.0, batch_first=True
         )
         self.decoder = nn.TransformerDecoder(decoder_layer, num_layers=num_layers)
 
@@ -176,7 +180,7 @@ class TransformerDecoder(nn.Module):
 
 
 class MaskFormerCriterion(nn.Module):
-    """Bipartite matching loss for MaskFormer / OneFormer.
+    """Bipartite matching loss for MaskFormer.
 
     For each image in the batch:
       1. Extract GT segments from the semantic annotation map
@@ -232,15 +236,17 @@ class MaskFormerCriterion(nn.Module):
         """Extract per-class binary masks from a [H, W] annotation map.
 
         Returns list of (class_idx: int, binary_mask: [H, W] float32).
-        Background (class 0) is intentionally EXCLUDED so no query is ever
-        trained to predict background.  Background emerges implicitly as the
-        complement of all foreground masks.  Including it causes the model to
-        collapse: a background query gets a mask covering ~80% of pixels and
-        its large spatial support dominates the segmap sum, driving all
-        foreground predictions to near-zero.
+        ALL classes including background (class 0) are included so that one
+        query is explicitly trained to predict background.  Without this,
+        the fg_prob gating in the segmap merging suppresses unmatched
+        (no-object) query contributions to zero for every channel — including
+        channel 0 — leaving background permanently unpredicted.  The result is
+        near-zero precision despite high recall: argmax never picks class 0.
+        Including background trains a dedicated query whose sigmoid mask covers
+        the background region, giving channel 0 a proper positive signal.
         """
         segments = []
-        for c in range(1, self.num_classes):   # skip class 0 (background)
+        for c in range(self.num_classes):   # include class 0 (background)
             mask = (anno_b == c).float()
             if mask.sum() > 0:
                 segments.append((c, mask))
@@ -268,11 +274,25 @@ class MaskFormerCriterion(nn.Module):
         gt_flat   = gt_masks.flatten(1)           # [M, HW]
         HW        = pred_flat.shape[1]
 
-        # Binary cross-entropy cost
+        # Binary cross-entropy cost with per-segment balanced pos_weight.
+        # For heavily imbalanced masks (e.g. background ~95% positive pixels)
+        # plain BCE is dominated by trivially-correct positive pixels and gives
+        # almost no gradient signal to suppress the mask at negative (foreground)
+        # pixels.  Balanced pos_weight = neg_pixels/pos_pixels equalises the BCE
+        # contribution of positive and negative spatial locations so the Hungarian
+        # assignment also accounts for mask sharpness, not just mass.
+        pos_count  = gt_flat.sum(-1).clamp(min=1)        # [M]
+        neg_count  = (HW - pos_count).clamp(min=1)       # [M]
+        pw         = (neg_count / pos_count).clamp(0.05, 20.0)  # [M]
         p_exp = pred_flat.unsqueeze(1).expand(Q, M, HW)  # [Q, M, HW]
         g_exp = gt_flat.unsqueeze(0).expand(Q, M, HW)    # [Q, M, HW]
-        bce_cost = F.binary_cross_entropy_with_logits(
-            p_exp, g_exp, reduction='none').mean(-1)      # [Q, M]
+        # Apply per-segment pos_weight: scale positive term by pw[m]
+        pw_exp = pw.view(1, M, 1).expand(Q, M, HW)
+        bce_cost_raw = F.binary_cross_entropy_with_logits(
+            p_exp, g_exp, reduction='none')               # [Q, M, HW]
+        # Re-weight: positive pixels get pw weight, negative pixels get 1
+        bce_cost_w = bce_cost_raw * (g_exp * (pw_exp - 1.0) + 1.0)
+        bce_cost = bce_cost_w.mean(-1)                    # [Q, M]
 
         # Dice cost
         num      = 2 * torch.einsum('qn,mn->qm', pred_sig, gt_flat) # [Q, M]
@@ -336,13 +356,23 @@ class MaskFormerCriterion(nn.Module):
                     class_logits[b, r].unsqueeze(0), tgt,
                     weight=self.ce_weight,
                 )
-                # Mask – binary cross-entropy
+                # Mask – balanced binary cross-entropy.
+                # pos_weight = neg_pixels/pos_pixels equalises the gradient signal
+                # for strongly imbalanced masks (background ~95% positive) so the
+                # model receives equally-strong gradients to suppress the mask at
+                # foreground pixels as to activate it at background pixels.
+                # Clamped to [0.05, 20] to prevent extreme values for tiny masks.
+                g_flat   = gt_masks[c].flatten()
+                pos_px   = g_flat.sum().clamp(min=1)
+                neg_px   = (g_flat.numel() - pos_px).clamp(min=1)
+                bce_pw   = (neg_px / pos_px).clamp(0.05, 20.0)
                 batch_loss = batch_loss + self.weight_mask * F.binary_cross_entropy_with_logits(
-                    pred_masks[b, r], gt_masks[c]
+                    pred_masks[b, r], gt_masks[c],
+                    pos_weight=bce_pw,
                 )
                 # Mask – Dice
                 p_sig = pred_masks[b, r].sigmoid().flatten()
-                g     = gt_masks[c].flatten()
+                g     = g_flat
                 dice  = 1.0 - (2*(p_sig*g).sum() + 1e-5) / (p_sig.sum() + g.sum() + 1e-5)
                 batch_loss = batch_loss + self.weight_dice * dice
 
@@ -500,15 +530,21 @@ class MaskFormerFusion(nn.Module):
         #
         #   Standard formula: segmap[c] = Σ_q softmax(cls)[q,c] · sigmoid(mask)[q]
         #
-        #   Problem with naive slicing [:num_classes]: even a no-object query
-        #   (softmax mass on the eos token) still contributes 1/C to every class
-        #   after the slice.  With 100 queries and ~3 foreground GT segments, the
-        #   ~97 no-object queries collectively swamp the 3 foreground queries.
+        #   With 100 queries and ~4 GT segments (background + 3 foreground), ~96
+        #   queries are unmatched and learn to predict no-object (class num_classes).
+        #   These unmatched queries have P(no-object) ≈ 1, but their masks are
+        #   unregularized (no mask loss applied to unmatched queries), so
+        #   sigma(mask) ≈ 0.5 initially.  Without gating, 96 × 0.2 × 0.5 ≈ 9.6
+        #   would be added equally to every class channel, swamping the 4 matched
+        #   queries' contributions of ≈ 0.9 × 0.9 = 0.81 each.
         #
         #   Fix: weight each query's contribution by its foreground probability
         #     fg_prob_q = 1 - P(no-object | q)
-        #   so no-object queries contribute nearly zero, foreground queries
-        #   contribute nearly their full class probability × mask.
+        #   so no-object queries ('unmatched') contribute ≈ 0 to the segmap,
+        #   while the matched queries (background + foreground) contribute fully.
+        #   Note: background is NOW included in GT matching (see _build_gt),
+        #   so the background channel (class 0) receives proper positive signal
+        #   from its matched query with fg_prob ≈ 1.
         b, _, h, w = masks.shape
         cls_probs_full = F.softmax(class_logits, dim=-1)           # [B, Q, C+1]
         fg_prob        = 1.0 - cls_probs_full[..., -1:]            # [B, Q, 1]
